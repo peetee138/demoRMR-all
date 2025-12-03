@@ -88,6 +88,7 @@ int updateSkeletonPicture;
      skeleton skeleJoints;
 #endif
     int useDirectCommands;
+
 #ifndef DISABLE_AMCL
 public:
     Particle &getBestParticle(){return robotCom.getBestParticle();}

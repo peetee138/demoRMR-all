@@ -1,6 +1,7 @@
 #include "mainwindow.h"
 #include "ui_mainwindow.h"
 #include <QPainter>
+#include <QDebug>
 #include <math.h>
 ///TOTO JE DEMO PROGRAM...AK SI HO NASIEL NA PC V LABAKU NEPREPISUJ NIC,ALE SKOPIRUJ SI MA NIEKAM DO INEHO FOLDERA
 /// AK HO MAS Z GITU A ROBIS NA LABAKOVOM PC, TAK SI HO VLOZ DO FOLDERA KTORY JE JASNE ODLISITELNY OD TVOJICH KOLEGOV
@@ -20,6 +21,26 @@ MainWindow::MainWindow(QWidget *parent) :
     ipaddress="127.0.0.1";//192.168.1.11toto je na niektory realny robot.. na lokal budete davat "127.0.0.1"
 
     ui->setupUi(this);
+
+    lidarVis = new LidarVisualizer(this);
+    lidarVis->setRobot(&_robot); // Odovzdáme mu pointer na robota
+
+    // Nájdeme widget z .ui súboru (krok 1) a vložíme doň náš vizualizér
+    if(ui->lidarWidget) {
+        QVBoxLayout* layout = new QVBoxLayout(ui->lidarWidget);
+        //layout->setMargin(0);
+        layout->addWidget(lidarVis);
+    }
+
+    photoTaken = false;
+    recording = false;
+    QDateTime now = QDateTime::currentDateTime();
+    QString timestamp = now.toString("yyyy_MM_dd_hh_mm_ss");
+    videoPath = "C:/Users/petri/Downloads/kamera_kobuki/Zaznam/zaznam_" + timestamp + ".avi";
+    photoPath = "C:/Users/petri/Downloads/kamera_kobuki/Fotka/fotka_lopty_" + timestamp + ".jpg";
+
+    qDebug() << "Video sa uloží sem:" << videoPath; qDebug() << "Fotka sa uloží sem:" << photoPath;
+
     datacounter=0;
 #ifndef DISABLE_OPENCV
     actIndex=-1;
@@ -29,7 +50,7 @@ MainWindow::MainWindow(QWidget *parent) :
 
 
     datacounter=0;
-_robot.startLoging=false;
+    _robot.startLoging=false;
 
 }
 
@@ -40,6 +61,7 @@ MainWindow::~MainWindow()
 
 void MainWindow::paintEvent(QPaintEvent *event)
 {
+    qDebug()<<"nahravaie: "<<recording;
     QPainter painter(this);
     ///prekreslujem obrazovku len vtedy, ked viem ze mam nove data. paintevent sa
     /// moze pochopitelne zavolat aj z inych dovodov, napriklad zmena velkosti okna
@@ -49,19 +71,19 @@ void MainWindow::paintEvent(QPaintEvent *event)
     pero.setWidth(3);//hrubka pera -3pixely
     pero.setColor(Qt::green);//farba je zelena
     QRect rect;
-    rect= ui->widget->geometry();//ziskate porametre stvorca,do ktoreho chcete kreslit
+    rect= ui->centralWidget->geometry();//ziskate porametre stvorca,do ktoreho chcete kreslit
     rect.translate(0,15);
     painter.drawRect(rect);
 #ifndef DISABLE_OPENCV
-    if(useCamera1==true && actIndex>-1)/// ak zobrazujem data z kamery a aspon niektory frame vo vectore je naplneny
-    {
+    /*if(useCamera1==true && actIndex>-1)/// ak zobrazujem data z kamery a aspon niektory frame vo vectore je naplneny
+    {*/
         std::cout<<actIndex<<std::endl;
         QImage image = QImage((uchar*)frame[actIndex].data, frame[actIndex].cols, frame[actIndex].rows, frame[actIndex].step, QImage::Format_RGB888  );//kopirovanie cvmat do qimage
         painter.drawImage(rect,image.rgbSwapped());
-    }
-    else
+    //}
+    //else
 #endif
-    {
+    /*{
         if(updateLaserPicture==1) ///ak mam nove data z lidaru
         {
             updateLaserPicture=0;
@@ -97,6 +119,8 @@ void MainWindow::paintEvent(QPaintEvent *event)
 
                     if (_robot.getAmclMap().distanceField[_robot.getAmclMap().index(c,r)]==1)
                         painter.setBrush( QColor(0, 200, 0));  // green
+                    else if (_robot.getAmclMap().distanceField[_robot.getAmclMap().index(c,r)]>=2 && _robot.getAmclMap().distanceField[_robot.getAmclMap().index(c,r)] <=4)
+                        painter.setBrush( QColor(100, 100, 0));  // green
                     else
                         painter.setBrush( Qt::black);
 
@@ -137,7 +161,7 @@ void MainWindow::paintEvent(QPaintEvent *event)
                 painter.drawEllipse(QPoint(xp, yp),2,2);
         }
     }
-#endif
+#endif*/
 }
 
 
@@ -145,14 +169,18 @@ void MainWindow::paintEvent(QPaintEvent *event)
 /// prepojenie signal slot je vo funkcii  on_pushButton_9_clicked
 void  MainWindow::setUiValues(double robotX,double robotY,double robotFi)
 {
-    ui->lineEdit_2->setText(QString::number(robotX));
+    /*ui->lineEdit_2->setText(QString::number(robotX));
     ui->lineEdit_3->setText(QString::number(robotY));
-    ui->lineEdit_4->setText(QString::number(robotFi));
+    ui->lineEdit_4->setText(QString::number(robotFi));*/
 }
 #ifndef DISABLE_AMCL
 void MainWindow::setUiAMCLValues(double robotX, double robotY, double robotFi)
 {
-    std::cout<<"poloha z amcl dosla.. asi si to uprav"<<std::endl;
+    ui->lineEdit_2->setText("X = " + QString::number(robotX));
+    ui->lineEdit_3->setText("Y = " + QString::number(robotY));
+    ui->lineEdit_4->setText("Fi = " + QString::number(robotFi));
+
+    //::cout<<"poloha z amcl dosla.. asi si to uprav"<<std::endl;
 }
 #endif
 
@@ -160,10 +188,17 @@ void MainWindow::on_pushButton_9_clicked() //start button
 {
     //ziskanie joystickov
 
-
+    QString zadany_text = ui->lineEdit->text();
+    if (zadany_text.isEmpty()){
+        this->ipaddress = "127.0.0.1";
+        qDebug() << "IP adresa nastavená na" << QString::fromStdString(ipaddress);
+    }
+    else{
+        this->ipaddress = zadany_text.toStdString();
+        qDebug() << "IP adresa nastavená na" << QString::fromStdString(ipaddress);
+    }
     //tu sa nastartuju vlakna ktore citaju data z lidaru a robota
-
-
+    //recording = false; // reset
 
     connect(&_robot,SIGNAL(publishPosition(double,double,double)),this,SLOT(setUiValues(double,double,double)));
     connect(&_robot,SIGNAL(publishLidar(const LaserMeasurement &)),this,SLOT(paintThisLidar(const LaserMeasurement &)));
@@ -178,52 +213,66 @@ void MainWindow::on_pushButton_9_clicked() //start button
 #endif
     _robot.initAndStartRobot(ipaddress);
 
-    #ifndef DISABLE_JOYSTICK
-        instance = QJoysticks::getInstance();
+#ifndef DISABLE_JOYSTICK
+    instance = QJoysticks::getInstance();
     /// prepojenie joysticku s jeho callbackom... zas cez lambdu. neviem ci som to niekde spominal,ale lambdy su super. okrem toho mam este rad ternarne operatory a spolocneske hry ale to tiez nikoho nezaujima
     /// co vas vlastne zaujima? citanie komentov asi nie, inak by ste citali toto a ze tu je blbosti
     connect(
-                instance, &QJoysticks::axisChanged,
-                [this]( const int js, const int axis, const qreal value) {
-        double forw=0, rot=0;
-        if(/*js==0 &&*/ axis==1){forw=-value*300;}
-        if(/*js==0 &&*/ axis==0){rot=-value*(3.14159/2.0);}
-        this->_robot.setSpeedVal(forw,rot);
-    }
-    );
+        instance, &QJoysticks::axisChanged,
+        [this]( const int js, const int axis, const qreal value) {
+            double forw=0, rot=0;
+            if(/*js==0 &&*/ axis==1){forw=-value*300;}
+            if(/*js==0 &&*/ axis==0){rot=-value*(3.14159/2.0);}
+            this->_robot.setSpeedVal(forw,rot);
+        }
+        );
 #endif
+}
+
+void MainWindow::on_lineEdit_returnPressed()
+{
+    // Vykoná rovnakú akciu ako kliknutie na tlačidlo Štart
+    on_pushButton_9_clicked();
 }
 
 void MainWindow::on_pushButton_2_clicked() //forward
 {
     //pohyb dopredu
-    _robot.setSpeed(500,0);
+    _robot.setSpeedVal(200,0);
 
 }
 
 void MainWindow::on_pushButton_3_clicked() //back
 {
-    _robot.setSpeed(-250,0);
+    _robot.setSpeedVal(-100,0);
 
 }
 
 void MainWindow::on_pushButton_6_clicked() //left
 {
-    _robot.setSpeed(0,3.14159/2);
+    _robot.setSpeedVal(0,3.14159/8);
 
 }
 
 void MainWindow::on_pushButton_5_clicked()//right
 {
-    _robot.setSpeed(0,-3.14159/2);
+    _robot.setSpeedVal(0,-3.14159/8);
 
 }
 
 void MainWindow::on_pushButton_4_clicked() //stop
 {
-    _robot.setSpeed(0,0);
+    _robot.setSpeedVal(0,0);
 
 }
+
+/*void MainWindow::on_pushButton_12_clicked(){
+    if (recording) {
+        recording = false;          // zastaví nahrávanie
+        videoWriter.release();      // uvoľní súbor
+        qDebug() << "Nahrávanie zastavené pomocou tlačidla 8";
+    }
+}*/
 
 
 
@@ -252,10 +301,18 @@ void MainWindow::on_pushButton_clicked()
 
 int MainWindow::paintThisLidar(const LaserMeasurement &laserData)
 {
-    memcpy( &copyOfLaserData,&laserData,sizeof(LaserMeasurement));
+    /* memcpy( &copyOfLaserData,&laserData,sizeof(LaserMeasurement));
     updateLaserPicture=1;
 
     update();
+    return 0;*/
+
+    // Odstranujeme memcpy do lokalnej premennej MainWindow, posielame to rovno vizualizeru
+    if(lidarVis) {
+        lidarVis->updateLidarData(laserData);
+    }
+
+    // update(); <--- TOTO VYMAZ ALEBO ZAKOMENTUJ, aby sa neprekreslovalo cele okno kvoli lidaru
     return 0;
 }
 
@@ -265,13 +322,63 @@ int MainWindow::paintThisLidar(const LaserMeasurement &laserData)
 /// vola sa ked dojdu nove data z kamery
 int MainWindow::paintThisCamera(const cv::Mat &cameraData)
 {
+    cv::Mat frameCopy;
+    cameraData.copyTo(frameCopy);
 
-    cameraData.copyTo(frame[(actIndex+1)%3]);//kopirujem do nasej strukury
-    actIndex=(actIndex+1)%3;//aktualizujem kde je nova fotka
+    frameCopy.copyTo(frame[(actIndex+1)%3]);
+    actIndex = (actIndex+1)%3;
 
+    // -----------------------------
+    // 1) Spustenie nahrávania
+    // -----------------------------
+    if (!recording) {
 
-    updateLaserPicture=1;
+        int fps = 20;
+        cv::Size size(frameCopy.cols, frameCopy.rows);
 
+        // MUSÍ byť .avi !!!
+        if (!videoWriter.open(videoPath.toStdString(),
+                              cv::VideoWriter::fourcc('M','J','P','G'),
+                              fps,
+                              size,
+                              true))
+        {
+            qDebug() << "ERROR: VideoWriter could NOT open file:" << videoPath;
+        }
+        else {
+            recording = true;
+            qDebug() << "Recording started..." << videoPath;
+        }
+    }
+
+    // -----------------------------
+    // 2) Zapis videa
+    // -----------------------------
+    if (recording && videoWriter.isOpened()) {
+        videoWriter.write(frameCopy);
+    }
+
+    // -----------------------------
+    // 3) Detekcia lopty a uloženie fotky
+    // -----------------------------
+    if (!photoTaken && detectBall(frameCopy)) {
+
+        qDebug() << "BALL DETECTED!";
+
+        cv::imwrite(photoPath.toStdString(), frameCopy);
+        photoTaken = true;
+
+        // stop video
+        if (recording) {
+            recording = false;
+            videoWriter.release();
+            qDebug() << "Recording stopped.";
+        }
+    }
+
+    updateLaserPicture = 1;
+
+    this->update();
     return 0;
 }
 #endif
@@ -286,7 +393,7 @@ int MainWindow::paintThisSkeleton(const skeleton &skeledata)
 }
 #endif
 
-void MainWindow::on_pushButton_10_clicked()
+/*void MainWindow::on_pushButton_10_clicked()
 {
     _robot.startLoging=!_robot.startLoging;
     if(_robot.startLoging==true)
@@ -294,5 +401,37 @@ void MainWindow::on_pushButton_10_clicked()
     else
         ui->pushButton_10->setText("Start Logging");
 
-}
+}*/
 
+bool MainWindow::detectBall(const cv::Mat &frame)
+{
+    cv::Mat hsv;
+    cv::cvtColor(frame, hsv, cv::COLOR_BGR2HSV);
+
+    // červená farba – dve masky
+    cv::Mat lowerRed, upperRed;
+    cv::inRange(hsv, cv::Scalar(0, 150, 80), cv::Scalar(10, 255, 255), lowerRed);
+    cv::inRange(hsv, cv::Scalar(170, 150, 80), cv::Scalar(180, 255, 255), upperRed);
+
+    cv::Mat redMask = lowerRed | upperRed;
+
+    // žltá (ak máš žltú loptu)
+    cv::Mat yellowMask;
+    cv::inRange(hsv, cv::Scalar(15, 120, 120), cv::Scalar(35, 255, 255), yellowMask);
+
+    cv::Mat mask = redMask | yellowMask;
+
+    // najdi kontúry
+    std::vector<std::vector<cv::Point>> contours;
+    cv::findContours(mask, contours, cv::RETR_EXTERNAL, cv::CHAIN_APPROX_SIMPLE);
+
+    for (auto &c : contours) {
+        double area = cv::contourArea(c);
+
+        if (area > 800) {   // prahovanie
+            return true;
+        }
+    }
+
+    return false;
+}

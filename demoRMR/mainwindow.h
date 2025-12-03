@@ -8,9 +8,12 @@
 #include<windows.h>
 #endif
 #include<iostream>
+#include <QDir>
+//#include <QCloseEvent>
 //#include<arpa/inet.h>
 //#include<unistd.h>
 //#include<sys/socket.h>
+#include <QElapsedTimer>
 #include<sys/types.h>
 #include<stdio.h>
 #include<string.h>
@@ -18,7 +21,8 @@
 #include<vector>
 //#include "ckobuki.h"
 //#include "rplidar.h"
-
+#include "lidarvisualizer.h"
+#include <QVBoxLayout> // Dôležité pre vloženie widgetu
 
 #include "robot.h"
 #ifndef DISABLE_JOYSTICK
@@ -62,6 +66,13 @@ public:
 
     void on_pushButton_clicked();
 
+    void on_lineEdit_returnPressed();
+
+    //void on_pushButton_10_clicked();
+    //void on_pushButton_11_clicked();
+    //void on_pushButton_8_clicked();
+    //void on_pushButton_12_clicked();
+    //void closeEvent(QCloseEvent *event) override;
 
     int paintThisLidar(const LaserMeasurement &laserData);
 #ifndef DISABLE_OPENCV
@@ -70,11 +81,25 @@ public:
 #ifndef DISABLE_SKELETON
     int paintThisSkeleton(const skeleton &skeledata);
 #endif
-    void on_pushButton_10_clicked();
+    //void on_pushButton_10_clicked();
+    //void on_pushButton_8_clicked();
 
 private:
 
     robot _robot;
+    LidarVisualizer *lidarVis; // <--- PRIDAJ TOTO
+
+    cv::VideoWriter videoWriter;
+    bool recording = false;
+
+    QString videoPath;          // vygeneruje sa automaticky v konstruktore
+    QString photoPath;          // vygeneruje sa automaticky v konstruktore
+
+    bool photoTaken = false;    // fotka sa uloží iba raz
+
+    bool detectBall(const cv::Mat &frame);
+
+
     //--skuste tu nic nevymazat... pridavajte co chcete, ale pri odoberani by sa mohol stat nejaky drobny problem, co bude vyhadzovat chyby
     Ui::MainWindow *ui;
      void paintEvent(QPaintEvent *event);// Q_DECL_OVERRIDE;

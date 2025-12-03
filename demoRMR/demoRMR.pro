@@ -132,11 +132,16 @@ LIBS += -L$$PWD/../amcl/lib -lamcl
     }
 }  # end DISABLE_OPENCV guard
 SOURCES += main.cpp\
+        lidarvisualizer.cpp \
         mainwindow.cpp \
         robot.cpp
 
 HEADERS  += mainwindow.h \
+    lidarvisualizer.h \
     robot.h
 
 FORMS    += mainwindow.ui
 message(DEFINES in demoRMR: $$DEFINES)  # Debugging message
+
+RESOURCES += \
+    Ikonky.qrc
