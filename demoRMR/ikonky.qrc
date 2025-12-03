@@ -1,0 +1,8 @@
+<RCC>
+    <qresource prefix="/">
+        <file>ikonky/1664849-200.png</file>
+        <file>ikonky/9937122.png</file>
+        <file>ikonky/NOT AUS.png</file>
+        <file>ikonky/turn_on.png</file>
+    </qresource>
+</RCC>
