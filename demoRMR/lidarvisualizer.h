@@ -36,6 +36,9 @@ public:
     // Funkcia na vycistenie vsetkych bodov
     void clearPoints() { points.clear(); update(); }
 
+signals:
+    void pointsUpdated(const std::vector<MapPoint> &points);
+
 protected:
     void paintEvent(QPaintEvent *event) override;
     void mousePressEvent(QMouseEvent *event) override;

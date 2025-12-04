@@ -134,10 +134,12 @@ LIBS += -L$$PWD/../amcl/lib -lamcl
 SOURCES += main.cpp\
         lidarvisualizer.cpp \
         mainwindow.cpp \
+        mapa.cpp \
         robot.cpp
 
 HEADERS  += mainwindow.h \
     lidarvisualizer.h \
+    mapa.h \
     robot.h
 
 FORMS    += mainwindow.ui

@@ -19,6 +19,8 @@
 #include<string.h>
 #include<stdlib.h>
 #include<vector>
+#include <vector>
+#include <QTableWidgetItem>
 //#include "ckobuki.h"
 //#include "rplidar.h"
 #include "lidarvisualizer.h"
@@ -27,6 +29,7 @@
 #include "robot.h"
 #ifndef DISABLE_JOYSTICK
 #include <QJoysticks.h>
+
 #endif
 namespace Ui {
 class MainWindow;
@@ -69,9 +72,13 @@ public:
     void on_lineEdit_returnPressed();
 
     //void on_pushButton_10_clicked();
-    //void on_pushButton_11_clicked();
+    void on_pushButton_12_clicked();
     //void on_pushButton_8_clicked();
-    //void on_pushButton_12_clicked();
+    void updatePointsTable(const std::vector<MapPoint> &points);
+
+    //void keyPressEvent(QKeyEvent *event);
+
+    void on_pushButton_13_clicked();
     //void closeEvent(QCloseEvent *event) override;
 
     int paintThisLidar(const LaserMeasurement &laserData);
@@ -83,6 +90,10 @@ public:
 #endif
     //void on_pushButton_10_clicked();
     //void on_pushButton_8_clicked();
+protected:
+    void keyPressEvent(QKeyEvent *event) override; // <--- Toto pridaj do triedy
+
+
 
 private:
 

@@ -4,11 +4,11 @@ robot::robot(QObject *parent) : QObject(parent)
 {
     startLoging=false;
     qRegisterMetaType<LaserMeasurement>("LaserMeasurement");
-    #ifndef DISABLE_OPENCV
+#ifndef DISABLE_OPENCV
     qRegisterMetaType<cv::Mat>("cv::Mat");
 #endif
 #ifndef DISABLE_SKELETON
-qRegisterMetaType<skeleton>("skeleton");
+    qRegisterMetaType<skeleton>("skeleton");
 #endif
 }
 
@@ -21,14 +21,14 @@ void robot::initAndStartRobot(std::string ipaddress)
     /// lambdy su super, setria miesto a ak su rozumnej dlzky,tak aj prehladnost... ak ste o nich nic nepoculi poradte sa s vasim doktorom alebo lekarnikom...
     robotCom.setLaserParameters(ipaddress,52999,5299,/*[](LaserMeasurement dat)->int{std::cout<<"som z lambdy callback"<<std::endl;return 0;}*/std::bind(&robot::processThisLidar,this,std::placeholders::_1));
     robotCom.setRobotParameters(ipaddress,53000,5300,std::bind(&robot::processThisRobot,this,std::placeholders::_1));
-    #ifndef DISABLE_AMCL
+#ifndef DISABLE_AMCL
     robotCom.setAMCLParameters("mapa.txt",15000,0.01,2,std::bind(&robot::processThisAMCLPosition,this,std::placeholders::_1,std::placeholders::_2,std::placeholders::_3));
 #endif
-  #ifndef DISABLE_OPENCV
+#ifndef DISABLE_OPENCV
     robotCom.setCameraParameters("http://"+ipaddress+":8000/stream.mjpg",std::bind(&robot::processThisCamera,this,std::placeholders::_1));
 #endif
-   #ifndef DISABLE_SKELETON
-      robotCom.setSkeletonParameters("127.0.0.1",23432,23432,std::bind(&robot::processThisSkeleton,this,std::placeholders::_1));
+#ifndef DISABLE_SKELETON
+    robotCom.setSkeletonParameters("127.0.0.1",23432,23432,std::bind(&robot::processThisSkeleton,this,std::placeholders::_1));
 #endif
     ///ked je vsetko nasetovane tak to tento prikaz spusti (ak nieco nieje setnute,tak to normalne nenastavi.cize ak napr nechcete kameru,vklude vsetky info o nej vymazte)
     robotCom.robotStart();
@@ -74,7 +74,7 @@ int robot::processThisRobot(TKobukiData robotdata)
     }
 
 
-///TU PISTE KOD... TOTO JE TO MIESTO KED NEVIETE KDE ZACAT,TAK JE TO NAOZAJ TU. AK AJ TAK NEVIETE, SPYTAJTE SA CVICIACEHO MA TU NATO STRING KTORY DA DO HLADANIA XXX
+    ///TU PISTE KOD... TOTO JE TO MIESTO KED NEVIETE KDE ZACAT,TAK JE TO NAOZAJ TU. AK AJ TAK NEVIETE, SPYTAJTE SA CVICIACEHO MA TU NATO STRING KTORY DA DO HLADANIA XXX
 
     ///kazdy piaty krat, aby to ui moc nepreblikavalo..
     if(datacounter%5==0)
@@ -140,16 +140,16 @@ int robot::processThisLidar(LaserMeasurement laserData)
     memcpy( &copyOfLaserData,&laserData,sizeof(LaserMeasurement));
     //tu mozete robit s datami z lidaru.. napriklad najst prekazky, zapisat do mapy. naplanovat ako sa prekazke vyhnut.
     // ale nic vypoctovo narocne - to iste vlakno ktore cita data z lidaru
-   // updateLaserPicture=1;
+    // updateLaserPicture=1;
     emit publishLidar(copyOfLaserData);
-   // update();//tento prikaz prinuti prekreslit obrazovku.. zavola sa paintEvent funkcia
+    // update();//tento prikaz prinuti prekreslit obrazovku.. zavola sa paintEvent funkcia
 
 
     return 0;
 
 }
 
-  #ifndef DISABLE_OPENCV
+#ifndef DISABLE_OPENCV
 ///toto je calback na data z kamery, ktory ste podhodili robotu vo funkcii initAndStartRobot
 /// vola sa ked dojdu nove data z kamery
 int robot::processThisCamera(cv::Mat cameraData)
@@ -163,7 +163,7 @@ int robot::processThisCamera(cv::Mat cameraData)
 }
 #endif
 
-  #ifndef DISABLE_SKELETON
+#ifndef DISABLE_SKELETON
 /// vola sa ked dojdu nove data z trackera
 int robot::processThisSkeleton(skeleton skeledata)
 {

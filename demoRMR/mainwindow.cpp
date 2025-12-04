@@ -3,6 +3,9 @@
 #include <QPainter>
 #include <QDebug>
 #include <math.h>
+#include <QMessageBox>
+#include <QKeyEvent>
+
 ///TOTO JE DEMO PROGRAM...AK SI HO NASIEL NA PC V LABAKU NEPREPISUJ NIC,ALE SKOPIRUJ SI MA NIEKAM DO INEHO FOLDERA
 /// AK HO MAS Z GITU A ROBIS NA LABAKOVOM PC, TAK SI HO VLOZ DO FOLDERA KTORY JE JASNE ODLISITELNY OD TVOJICH KOLEGOV
 /// NASLEDNE V POLOZKE Projects SKONTROLUJ CI JE VYPNUTY shadow build...
@@ -25,12 +28,30 @@ MainWindow::MainWindow(QWidget *parent) :
     lidarVis = new LidarVisualizer(this);
     lidarVis->setRobot(&_robot); // Odovzdáme mu pointer na robota
 
-    // Nájdeme widget z .ui súboru (krok 1) a vložíme doň náš vizualizér
-    if(ui->lidarWidget) {
-        QVBoxLayout* layout = new QVBoxLayout(ui->lidarWidget);
-        //layout->setMargin(0);
-        layout->addWidget(lidarVis);
+    // 1. Pripravíme layout pre Startovaciu obrazovku (lidarEnterWidget)
+    // Predpokladam, ze v .ui mas widget s nazvom "lidarEnterWidget"
+    if(ui->lidarEnterWidget) {
+        QVBoxLayout* l = new QVBoxLayout(ui->lidarEnterWidget);
+        l->setContentsMargins(0, 0, 0, 0); // Aby bol roztiahnuty na cele okno
+        l->addWidget(lidarVis); // Vlozime ho sem na zaciatku
     }
+
+    // 2. Pripravíme layout aj pre Hlavnu obrazovku (lidarWidget), aby bol nachystany
+    if(ui->lidarWidget && !ui->lidarWidget->layout()) {
+        QVBoxLayout* l = new QVBoxLayout(ui->lidarWidget);
+        l->setContentsMargins(0, 0, 0, 0);
+    }
+
+    connect(lidarVis, &LidarVisualizer::pointsUpdated, this, &MainWindow::updatePointsTable);
+    connect(ui->pushButton_13, &QPushButton::clicked, this, &MainWindow::on_pushButton_13_clicked);
+
+    QStringList headers;
+    headers << "X" << "Y" << "Typ";
+    ui->tableWidgetPoints->setColumnCount(3);
+    ui->tableWidgetPoints->setHorizontalHeaderLabels(headers);
+    ui->tableWidgetPoints->horizontalHeader()->setSectionResizeMode(QHeaderView::Stretch);
+
+
 
     photoTaken = false;
     recording = false;
@@ -57,6 +78,79 @@ MainWindow::MainWindow(QWidget *parent) :
 MainWindow::~MainWindow()
 {
     delete ui;
+}
+
+void MainWindow::updatePointsTable(const std::vector<MapPoint> &points)
+{
+    ui->tableWidgetPoints->setRowCount(0); // Vymazem stare
+
+    for(const auto& p : points)
+    {
+        int row = ui->tableWidgetPoints->rowCount();
+        ui->tableWidgetPoints->insertRow(row);
+
+        ui->tableWidgetPoints->setItem(row, 0, new QTableWidgetItem(QString::number(p.x)));
+        ui->tableWidgetPoints->setItem(row, 1, new QTableWidgetItem(QString::number(p.y)));
+
+        QString typeStr = (p.type == POINT_BLUE) ? "Waypoint" : "Task";
+        QTableWidgetItem *itemType = new QTableWidgetItem(typeStr);
+
+        if(p.type == POINT_BLUE) itemType->setForeground(Qt::blue);
+        else itemType->setForeground(Qt::magenta);
+
+        ui->tableWidgetPoints->setItem(row, 2, itemType);
+    }
+}
+
+// Slot na ulozenie do suboru
+void MainWindow::on_pushButton_13_clicked()
+{
+    std::vector<MapPoint> points = lidarVis->getPoints();
+    if(points.empty()) {
+        QMessageBox::warning(this, "Pozor", "Ziadne body na ulozenie!");
+        return;
+    }
+
+    QString filename = "trasa_bot.txt";
+    QFile file(filename);
+    if(file.open(QIODevice::WriteOnly | QIODevice::Text))
+    {
+        QTextStream out(&file);
+        out << "X;Y;TYP\n";
+        for(const auto& p : points) {
+            QString t = (p.type == POINT_BLUE) ? "WAYPOINT" : "TASK";
+            out << p.x << ";" << p.y << ";" << t << "\n";
+        }
+        file.close();
+        QMessageBox::information(this, "Uspech", "Body ulozene do " + filename);
+    }
+}
+
+void MainWindow::on_pushButton_12_clicked()
+{
+    // Bezpecnostna kontrola
+    if(!lidarVis || !ui->lidarWidget || !ui->lidarEnterWidget) return;
+
+    // Zistime, kde sa lidarVis prave nachadza
+    // parentWidget() vrati pointer na widget, v ktorom je lidarVis vlozeny
+    QWidget *currentParent = lidarVis->parentWidget();
+
+    if (currentParent == ui->lidarEnterWidget) {
+        // --- PREPNUT NA HLAVNU OBRAZOVKU ---
+
+        // Ziskame layout hlavneho widgetu a vlozime tam lidarVis
+        // addWidget ho automaticky zoberie z enterWidgetu a da ho sem
+        ui->lidarWidget->layout()->addWidget(lidarVis);
+
+        qDebug() << "Lidar presunuty do HLAVNEHO okna (lidarWidget)";
+    }
+    else {
+        // --- VRATIT NA STARTOVACIU OBRAZOVKU ---
+
+        ui->lidarEnterWidget->layout()->addWidget(lidarVis);
+
+        qDebug() << "Lidar presunuty do STARTOVACIEHO okna (lidarEnterWidget)";
+    }
 }
 
 void MainWindow::paintEvent(QPaintEvent *event)
@@ -296,7 +390,33 @@ void MainWindow::on_pushButton_clicked()
 }
 
 
+void MainWindow::keyPressEvent(QKeyEvent *event)
+{
+    // Bezpecnostna kontrola - ci mame vsetky widgety
+    if(!lidarVis || !ui->lidarWidget || !ui->lidarEnterWidget) return;
 
+    // --- STLACENIE "P" (Presun do lidarEnterWidget) ---
+    if(event->key() == Qt::Key_P)
+    {
+        // Skontrolujeme ci ma widget layout, do ktoreho mozeme vlozit
+        if(ui->lidarEnterWidget->layout()) {
+            ui->lidarEnterWidget->layout()->addWidget(lidarVis);
+            qDebug() << "Stlacene P -> Lidar presunuty do lidarEnterWidget";
+        }
+    }
+
+    // --- STLACENIE "M" (Presun do lidarWidget) ---
+    else if(event->key() == Qt::Key_M)
+    {
+        if(ui->lidarWidget->layout()) {
+            ui->lidarWidget->layout()->addWidget(lidarVis);
+            qDebug() << "Stlacene M -> Lidar presunuty do lidarWidget";
+        }
+    }
+
+    // Zavolame povodnu funkcionalitu pre ostatne klavesy
+    QMainWindow::keyPressEvent(event);
+}
 
 
 int MainWindow::paintThisLidar(const LaserMeasurement &laserData)

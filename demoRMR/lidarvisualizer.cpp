@@ -41,10 +41,8 @@ void LidarVisualizer::mousePressEvent(QMouseEvent *event)
     double cellHeight = static_cast<double>(this->height()) / rows;
 
     // 3. Prepocet kliknutia na mriezku
-    int clickX = event->x();
-    int clickY = event->y();
-    int gridX = static_cast<int>(clickX / cellWidth);
-    int gridY = static_cast<int>(clickY / cellHeight);
+    int gridX = static_cast<int>(event->x() / cellWidth);
+    int gridY = static_cast<int>(event->y() / cellHeight);
 
     // 4. Overenie hranic
     if(gridX >= 0 && gridX < cols && gridY >= 0 && gridY < rows)
@@ -55,7 +53,6 @@ void LidarVisualizer::mousePressEvent(QMouseEvent *event)
         int index = _robot->getAmclMap().index(gridX, gridY);
 
         // Získame hodnotu z distanceField
-        // (Predpokladám, že distanceField je pole intov alebo unsigned charov)
         unsigned int mapValue = _robot->getAmclMap().distanceField[index];
 
         // Podmienka:
@@ -66,10 +63,6 @@ void LidarVisualizer::mousePressEvent(QMouseEvent *event)
             qDebug() << "ZAKAZ: Klikol si na stenu alebo zltu zonu! Hodnota:" << mapValue;
             return; // Okamzite koncime funkciu, bod sa neprida
         }
-
-        // ------------------------------------
-
-        // ... Zvyšok kódu ostáva rovnaký (výber tlačidla, pridanie/odobranie bodu) ...
 
         PointType clickedType;
         if (event->button() == Qt::LeftButton) {
@@ -102,6 +95,7 @@ void LidarVisualizer::mousePressEvent(QMouseEvent *event)
         }
 
         qDebug() << "Pocet bodov:" << points.size();
+        emit pointsUpdated(points);
         update();
     }
 }
@@ -133,19 +127,21 @@ void LidarVisualizer::paintEvent(QPaintEvent *event)
     // --- 1. Kreslenie Mapy ---
     for (int r = 0; r < rows; ++r) {
         for (int c = 0; c < cols; ++c) {
-            QRectF cellRect(c * cellWidth, r * cellHeight, cellWidth, cellHeight);
-
-            if (_robot->getAmclMap().distanceField[_robot->getAmclMap().index(c,r)] == 1)
-                painter.setBrush(QColor(0, 200, 0));
-            else if (_robot->getAmclMap().distanceField[_robot->getAmclMap().index(c,r)] >= 2 &&
-                     _robot->getAmclMap().distanceField[_robot->getAmclMap().index(c,r)] <= 4)
-                painter.setBrush(QColor(100, 100, 0));
-            else
-                painter.setBrush(Qt::black);
+            unsigned int val = _robot->getAmclMap().distanceField[_robot->getAmclMap().index(c,r)];
+            if (val == 1) painter.setBrush(QColor(0, 200, 0));
+            else if (val >= 2 && val <= 4) painter.setBrush(QColor(100, 100, 0));
+            else painter.setBrush(Qt::black);
 
             painter.setPen(Qt::NoPen);
-            painter.drawRect(cellRect);
+            painter.drawRect(QRectF(c * cellWidth, r * cellHeight, cellWidth, cellHeight));
         }
+    }
+
+    for(const auto& p : points)
+    {
+        painter.setBrush((p.type == POINT_BLUE) ? Qt::blue : Qt::magenta);
+        painter.setPen(Qt::white);
+        painter.drawRect(QRectF(p.x * cellWidth, p.y * cellHeight, cellWidth, cellHeight));
     }
 
     // --- 2. Kreslenie robota (Laser data) ---
@@ -154,6 +150,7 @@ void LidarVisualizer::paintEvent(QPaintEvent *event)
     float robotThetaP = _robot->getBestParticle().theta;
 
     painter.setPen(QColor(200, 0, 0));
+    painter.setBrush(QColor(0, 0, 0));
     for(int k=0; k<copyOfLaserData.numberOfScans; k++)
     {
         float angleRad = robotThetaP - (copyOfLaserData.Data[k].scanAngle) * 3.14159 / 180.0f;
@@ -165,22 +162,5 @@ void LidarVisualizer::paintEvent(QPaintEvent *event)
         QRectF cellRect(gx * cellWidth, gy * cellHeight, cellWidth, cellHeight);
         painter.drawRect(cellRect);
     }
-
-    // --- 3. Kreslenie KLIKNUTYCH BODOV (Cely zoznam) ---
-    for(const auto& p : points)
-    {
-        if(p.type == POINT_BLUE) {
-            painter.setBrush(Qt::blue);
-        } else {
-            painter.setBrush(Qt::magenta); // Fialova
-        }
-
-        painter.setPen(Qt::white); // Biely obrys pre lepsiu viditelnost
-
-        QRectF pointRect(p.x * cellWidth, p.y * cellHeight, cellWidth, cellHeight);
-        painter.drawRect(pointRect);
-    }
-
 #endif
 }
-
