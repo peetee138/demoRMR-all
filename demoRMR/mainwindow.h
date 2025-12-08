@@ -21,6 +21,8 @@
 #include<vector>
 #include <vector>
 #include <QTableWidgetItem>
+#include <QLabel>        // <--- PRIDANE
+#include <QVBoxLayout>   // <--- PRIDANE
 //#include "ckobuki.h"
 //#include "rplidar.h"
 #include "lidarvisualizer.h"
@@ -90,6 +92,8 @@ public:
 #endif
     //void on_pushButton_10_clicked();
     //void on_pushButton_8_clicked();
+    void on_pushButton_7_clicked();
+
 protected:
     void keyPressEvent(QKeyEvent *event) override; // <--- Toto pridaj do triedy
 
@@ -99,6 +103,8 @@ private:
 
     robot _robot;
     LidarVisualizer *lidarVis; // <--- PRIDAJ TOTO
+    QLabel *cameraLabel;       // Widget pre zobrazenie kamery
+    bool isLidarBig;           // Premenna stavu
 
     cv::VideoWriter videoWriter;
     bool recording = false;
@@ -113,7 +119,7 @@ private:
 
     //--skuste tu nic nevymazat... pridavajte co chcete, ale pri odoberani by sa mohol stat nejaky drobny problem, co bude vyhadzovat chyby
     Ui::MainWindow *ui;
-     void paintEvent(QPaintEvent *event);// Q_DECL_OVERRIDE;
+     //void paintEvent(QPaintEvent *event);// Q_DECL_OVERRIDE;
      int updateLaserPicture;
      LaserMeasurement copyOfLaserData;
          int datacounter;

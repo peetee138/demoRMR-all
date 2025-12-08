@@ -132,17 +132,20 @@ LIBS += -L$$PWD/../amcl/lib -lamcl
     }
 }  # end DISABLE_OPENCV guard
 SOURCES += main.cpp\
+        helpwindow.cpp \
         lidarvisualizer.cpp \
         mainwindow.cpp \
         mapa.cpp \
         robot.cpp
 
 HEADERS  += mainwindow.h \
+    helpwindow.h \
     lidarvisualizer.h \
     mapa.h \
     robot.h
 
-FORMS    += mainwindow.ui
+FORMS    += mainwindow.ui \
+    helpwindow.ui
 message(DEFINES in demoRMR: $$DEFINES)  # Debugging message
 
 RESOURCES += \

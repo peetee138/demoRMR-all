@@ -115,8 +115,8 @@ int robot::processThisRobot(TKobukiData robotdata)
 int robot::processThisAMCLPosition(float x, float y, float theta)
 {
     std::cout<<"moja amcl poloha je "<<x<<" "<<y<<" "<<theta<<std::endl;
-    x=x-5845;
-    y=y-824;
+    x=x-5745;
+    y=y-845;
     theta = theta - M_PI/2;
     emit publishAMCLPosition(x,y,theta);
     return 0;

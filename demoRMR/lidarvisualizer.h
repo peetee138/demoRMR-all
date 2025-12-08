@@ -50,6 +50,32 @@ private:
 
     // ZOZNAM BODOV namiesto jedneho bodu
     std::vector<MapPoint> points;
+
+    // Pomocná funkcia na výpočet obdĺžnika s pomerom 82:66
+    QRect getMapRect() const {
+        if (width() == 0 || height() == 0) return QRect();
+
+        double targetRatio = 82.0 / 66.0;
+        double currentRatio = (double)width() / (double)height();
+
+        int drawW, drawH;
+        int offX, offY;
+
+        if (currentRatio > targetRatio) {
+            // Okno je príliš široké -> výška určuje veľkosť
+            drawH = height();
+            drawW = static_cast<int>(drawH * targetRatio);
+            offY = 0;
+            offX = (width() - drawW) / 2;
+        } else {
+            // Okno je príliš vysoké -> šírka určuje veľkosť
+            drawW = width();
+            drawH = static_cast<int>(drawW / targetRatio);
+            offX = 0;
+            offY = (height() - drawH) / 2;
+        }
+        return QRect(offX, offY, drawW, drawH);
+    }
 };
 
 #endif // LIDARVISUALIZER_H
