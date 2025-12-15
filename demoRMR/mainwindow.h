@@ -27,6 +27,8 @@
 //#include "rplidar.h"
 #include "lidarvisualizer.h"
 #include <QVBoxLayout> // Dôležité pre vloženie widgetu
+#include "batteryindicator.h" // <--- PRIDAT
+
 
 #include "robot.h"
 #ifndef DISABLE_JOYSTICK
@@ -57,31 +59,34 @@ public:
     ~MainWindow();
 
    private slots:
-    void on_pushButton_9_clicked();
-
+    void on_pushButton_clicked();
     void on_pushButton_2_clicked();
-
     void on_pushButton_3_clicked();
-
+    void on_pushButton_4_clicked();
+    void on_pushButton_5_clicked();
     void on_pushButton_6_clicked();
 
-    void on_pushButton_5_clicked();
+    void on_pushButton_8_clicked();
+    void on_pushButton_9_clicked();
 
-    void on_pushButton_4_clicked();
 
-    void on_pushButton_clicked();
+    void on_pushButton_12_clicked();
+    void on_pushButton_13_clicked();
+
+    void on_pushButton_15_clicked();
 
     void on_lineEdit_returnPressed();
 
-    //void on_pushButton_10_clicked();
-    void on_pushButton_12_clicked();
-    //void on_pushButton_8_clicked();
     void updatePointsTable(const std::vector<MapPoint> &points);
+
+    void showForbiddenError();
 
     //void keyPressEvent(QKeyEvent *event);
 
-    void on_pushButton_13_clicked();
+
     //void closeEvent(QCloseEvent *event) override;
+
+    void navigationLoop(); // Slot, ktorý sa bude volať každých 50ms
 
     int paintThisLidar(const LaserMeasurement &laserData);
 #ifndef DISABLE_OPENCV
@@ -100,6 +105,23 @@ protected:
 
 
 private:
+    bool notaus = false;
+
+    QTimer *navTimer;           // Časovač pre riadenie pohybu
+    std::vector<MapPoint> navigationPoints; // Zoznam bodov na prejdenie
+    int currentPointIndex;      // Ktorý bod práve riešime
+
+    void showCollisionError();
+    // Stavy navigácie
+    enum NavState {
+        IDLE,       // Stojí
+        MOVING,     // Hýbe sa k bodu
+        ROTATING    // Robí task (otočku)
+    };
+    NavState state;
+
+    double totalRotatedAngle;
+    double lastRobotTheta;
 
     robot _robot;
     LidarVisualizer *lidarVis; // <--- PRIDAJ TOTO
@@ -117,6 +139,12 @@ private:
     bool detectBall(const cv::Mat &frame);
 
 
+    double robot_X;
+    double robot_Y;
+    double robot_Fi;
+
+
+    BatteryIndicator *batteryVis;
     //--skuste tu nic nevymazat... pridavajte co chcete, ale pri odoberani by sa mohol stat nejaky drobny problem, co bude vyhadzovat chyby
     Ui::MainWindow *ui;
      //void paintEvent(QPaintEvent *event);// Q_DECL_OVERRIDE;

@@ -7,6 +7,7 @@
 #include <QKeyEvent>
 #include "helpwindow.h"
 #include <QHeaderView>
+#include "errordialog.h"
 
 MainWindow::MainWindow(QWidget *parent) :
     QMainWindow(parent),
@@ -21,6 +22,8 @@ MainWindow::MainWindow(QWidget *parent) :
     lidarVis = new LidarVisualizer(this);
     lidarVis->setRobot(&_robot);
 
+    connect(lidarVis, &LidarVisualizer::collisionDetected, this, &MainWindow::showCollisionError);
+
     // Kamera (QLabel namiesto paintEvent)
     cameraLabel = new QLabel(this);
     cameraLabel->setAlignment(Qt::AlignCenter);
@@ -29,6 +32,17 @@ MainWindow::MainWindow(QWidget *parent) :
     cameraLabel->setScaledContents(false);
 
     // --- 2. Vytvorenie layoutov pre vsetky schranky (podla tvojho screenshotu) ---
+
+    if (ui->widget_2->layout() == nullptr) {
+        QVBoxLayout *layout = new QVBoxLayout(ui->widget_2);
+        ui->widget_2->setLayout(layout);
+    }
+
+    // 2. Vytvoríme indikátor
+    batteryVis = new BatteryIndicator(this);
+
+    // 3. Pridáme ho do layoutu
+    ui->widget_2->layout()->addWidget(batteryVis);
 
 
     // A) VELKY STACK (stackedWidget)
@@ -71,10 +85,16 @@ MainWindow::MainWindow(QWidget *parent) :
         ui->stackedWidget_2->setCurrentWidget(ui->smallCamera);
     }
 
+    // --- INICIALIZÁCIA NAVIGÁCIE ---
+    state = IDLE;
+    navTimer = new QTimer(this);
+    // Prepojíme časovač s funkciou navigationLoop
+    connect(navTimer, &QTimer::timeout, this, &MainWindow::navigationLoop);
+
     // --- Ostatne prepojenia ---
     connect(lidarVis, &LidarVisualizer::pointsUpdated, this, &MainWindow::updatePointsTable);
     connect(ui->pushButton_13, &QPushButton::clicked, this, &MainWindow::on_pushButton_13_clicked);
-
+    connect(lidarVis, &LidarVisualizer::forbiddenZoneClicked, this, &MainWindow::showForbiddenError);
     QStringList headers;
     headers << "X" << "Y" << "Typ";
     ui->tableWidgetPoints->setColumnCount(3);
@@ -168,7 +188,7 @@ void MainWindow::updatePointsTable(const std::vector<MapPoint> &points)
         ui->tableWidgetPoints->setItem(row, 2, itemType);
     }
 }
-void MainWindow::on_pushButton_13_clicked()
+/*void MainWindow::on_pushButton_13_clicked()
 {
     std::vector<MapPoint> points = lidarVis->getPoints();
     if(points.empty()) {
@@ -187,8 +207,43 @@ void MainWindow::on_pushButton_13_clicked()
         file.close();
         QMessageBox::information(this, "Uspech", "Body ulozene do " + filename);
     }
+}*/
+
+void MainWindow::on_pushButton_13_clicked()
+{
+    // 1. Zoberieme body, ktoré si naklikal
+    navigationPoints = lidarVis->getPoints();
+
+    if(navigationPoints.empty()) {
+        QMessageBox::warning(this, "Navigácia", "Žiadne body na trase!");
+        return;
+    }
+
+    // 2. Nastavíme počiatočný stav
+    currentPointIndex = 0;
+    if(lidarVis) {
+        lidarVis->setCurrentIndex(0);
+    }
+
+    state = MOVING;
+
+    // 3. Spustíme časovač (cyklus pobeží každých 50ms)
+    if(!navTimer->isActive()) {
+        navTimer->start(50);
+    }
+
+    qDebug() << "Startujem navigaciu. Pocet bodov:" << navigationPoints.size();
 }
 
+void MainWindow::on_pushButton_8_clicked()
+{
+    if(lidarVis) {
+        // Zapneme kreslenie čiar (prepne sa to na true)
+        // Ak by si to chcel ako "toggle" (zapnúť/vypnúť), musel by si si v lidarvisualizer urobiť get metódu,
+        // ale pre začiatok stačí natvrdo zapnúť.
+        lidarVis->togglePathDrawing(true);
+    }
+}
 // Tento slot bol predtym pre tlacitko 8, mozes ho nechat alebo zmazat
 void MainWindow::on_pushButton_12_clicked()
 {
@@ -206,6 +261,11 @@ void MainWindow::setUiAMCLValues(double robotX, double robotY, double robotFi)
     ui->lineEdit_2->setText("X = " + QString::number(robotX/100));
     ui->lineEdit_3->setText("Y = " + QString::number(robotY/100));
     ui->lineEdit_4->setText("Fi = " + QString::number(robotFi));
+
+    robot_X = robotX;
+    robot_Y = robotY;
+    robot_Fi = robotFi;
+
 }
 #endif
 
@@ -218,6 +278,7 @@ void MainWindow::on_pushButton_9_clicked() // START
         this->ipaddress = zadany_text.toStdString();
     }
 
+    connect(&_robot, &robot::publishBattery, batteryVis, &BatteryIndicator::setBatteryLevel);
     connect(&_robot,SIGNAL(publishPosition(double,double,double)),this,SLOT(setUiValues(double,double,double)));
     connect(&_robot,SIGNAL(publishLidar(const LaserMeasurement &)),this,SLOT(paintThisLidar(const LaserMeasurement &)));
 #ifndef DISABLE_OPENCV
@@ -229,6 +290,7 @@ void MainWindow::on_pushButton_9_clicked() // START
 #ifndef DISABLE_AMCL
     connect(&_robot,SIGNAL(publishAMCLPosition(double,double,double)),this,SLOT(setUiAMCLValues(double,double,double)));
 #endif
+
     _robot.initAndStartRobot(ipaddress);
 
 #ifndef DISABLE_JOYSTICK
@@ -350,6 +412,175 @@ bool MainWindow::detectBall(const cv::Mat &frame)
     }
     return false;
 }
+void MainWindow::navigationLoop()
+{
+    // Statická premenná si pamätá hodnotu medzi volaniami funkcie (plynulosť)
+    static double current_linear_speed = 0.0;
+
+    // Lokálna premenná pre otáčanie (tu rampu nechceme)
+    double angular_speed = 0;
+
+    // --- 0. NOTAUS ---
+    if (notaus == true) {
+        // Okamžité zastavenie
+        _robot.setSpeedVal(0, 0);
+
+        // Resetujeme pamäť rýchlosti -> po odbrzdení pôjde od nuly
+        current_linear_speed = 0.0;
+
+        return;
+    }
+
+    if(state == IDLE) {
+        navTimer->stop();
+        _robot.setSpeedVal(0, 0);
+        current_linear_speed = 0.0;
+        return;
+    }
+
+    // --- 1. Kontrola konca trasy ---
+    if (currentPointIndex >= navigationPoints.size()) {
+        qDebug() << "Koniec trasy.";
+        state = IDLE;
+        _robot.setSpeedVal(0,0);
+        current_linear_speed = 0.0;
+        return;
+    }
+
+    MapPoint pt = navigationPoints[currentPointIndex];
+
+    // Prevod bodu z mapy na mm
+    double targetX = pt.x * 100.0;
+    double targetY = pt.y * 100.0;
+
+    // --- 2. Výpočet chýb ---
+    double dy = robot_X - targetX;
+    double dx = robot_Y - targetY;
+    double distance = sqrt(dx*dx + dy*dy);
+
+    double targetAngle = atan2(dy, dx);
+    double errorAngle = targetAngle - robot_Fi;
+
+    while (errorAngle > M_PI) errorAngle -= 2 * M_PI;
+    while (errorAngle < -M_PI) errorAngle += 2 * M_PI;
+
+    // --- 3. Konštanty ---
+    const double tolerance_pos = 50.0;
+    const double Kp_angle = 1.8;
+    const double Kp_dist = 1.0;
+
+    // RAMPA: O koľko zrýchliť/spomaliť za 50ms
+    // Ak dáš 10, tak z 0 na 300 sa dostane za 1.5 sekundy (30 krokov)
+    // Ak dáš 25, bude to ostrejšie (cca 0.6 sekundy)
+    const double RAMP_STEP = 10.0;
+
+    // --- 4. Rozhodovací strom ---
+
+    // A) Sme v cieli?
+    if (distance < tolerance_pos && state != ROTATING)
+    {
+        if (pt.type == POINT_PURPLE) {
+            _robot.setSpeedVal(0, 0);
+            current_linear_speed = 0.0; // Reset rýchlosti pred rotáciou
+            state = ROTATING;
+            totalRotatedAngle = 0.0;
+            lastRobotTheta = robot_Fi;
+            qDebug() << "Bod dosiahnuty (TASK). Zacinam rotovat.";
+            return;
+        }
+        else {
+            currentPointIndex++;
+            if(lidarVis) lidarVis->setCurrentIndex(currentPointIndex);
+
+            if (currentPointIndex >= navigationPoints.size()) {
+                state = IDLE;
+                _robot.setSpeedVal(0, 0);
+                current_linear_speed = 0.0;
+                qDebug() << "Ciel dosiahnuty. Koniec.";
+            } else {
+                qDebug() << "Bod dosiahnuty. Pokracujem plynule na dalsi.";
+            }
+            return;
+        }
+    }
+
+    // B) Sme vo fáze pohybu (MOVING)
+    if (state == MOVING)
+    {
+        double required_linear = 0.0;
+
+        // Ak je uhol veľký, stojíme a len točíme
+        if (fabs(errorAngle) > M_PI / 18.0) // 10 stupňov
+        {
+            required_linear = 0;
+            angular_speed = Kp_angle * errorAngle;
+        }
+        else
+        {
+            // Vypočítame koľko by sme CHCELI ísť
+            required_linear = Kp_dist * distance * cos(errorAngle);
+            angular_speed = Kp_angle * errorAngle;
+        }
+
+        // --- TU JE RAMPOVANIE ---
+
+        // 1. Orezanie žiadaného maxima (aby sme neakcelerovali k 1000ke)
+        if (required_linear > 300) required_linear = 300;
+        if (required_linear < 0) required_linear = 0; // Žiadne cúvanie!
+
+        // 2. Postupné pridávanie/uberanie (Rampa)
+        if (current_linear_speed < required_linear) {
+            current_linear_speed += RAMP_STEP;
+            // Aby sme neprestrelili
+            if (current_linear_speed > required_linear) current_linear_speed = required_linear;
+        }
+        else if (current_linear_speed > required_linear) {
+            current_linear_speed -= RAMP_STEP;
+            // Aby sme nepodstrelili
+            if (current_linear_speed < required_linear) current_linear_speed = required_linear;
+        }
+
+        // 3. Poistka (pre istotu)
+        if (current_linear_speed < 0) current_linear_speed = 0;
+
+        // Limity uhlovej rýchlosti (bez rampy)
+        if (angular_speed > 3.1415/4) angular_speed = 3.1415/4;
+        if (angular_speed < -3.1415/4) angular_speed = -3.1415/4;
+
+        _robot.setSpeedVal(current_linear_speed, angular_speed);
+    }
+
+    // C) Sme vo fáze otáčania na mieste (ROTATING)
+    else if (state == ROTATING)
+    {
+        // Tu sa uistíme, že lineárna je 0
+        current_linear_speed = 0.0;
+
+        double delta = robot_Fi - lastRobotTheta;
+        while (delta > M_PI) delta -= 2 * M_PI;
+        while (delta < -M_PI) delta += 2 * M_PI;
+
+        totalRotatedAngle += fabs(delta);
+        lastRobotTheta = robot_Fi;
+
+        if (totalRotatedAngle >= 2 * M_PI - 0.2) {
+            state = MOVING;
+            currentPointIndex++;
+            if(lidarVis) lidarVis->setCurrentIndex(currentPointIndex);
+
+            _robot.setSpeedVal(0, 0);
+            qDebug() << "Rotacia dokoncena. Idem na dalsi bod.";
+        } else {
+            _robot.setSpeedVal(0, 0.5);
+        }
+    }
+}
+
+void LidarVisualizer::setCurrentIndex(int index)
+{
+    m_currentIndex = index;
+    update(); // Vynúti prekreslenie
+}
 
 void MainWindow::on_pushButton_7_clicked()
 {
@@ -357,3 +588,31 @@ void MainWindow::on_pushButton_7_clicked()
     helpWind.setModal(true);
     helpWind.exec();
 }
+
+void MainWindow::on_pushButton_15_clicked(){
+    notaus = !notaus;
+
+    if(notaus){
+        _robot.setSpeedVal(0,0);
+    }else
+        notaus = false;
+}
+
+void MainWindow::showForbiddenError()
+{
+    errorDialog dlg(this);
+
+    // Prepojíme signál z Dialogu (tlačidlo Pomocka) priamo na slot Visualizera (toggleWallHighlight)
+    // Použijeme lambdu alebo priame prepojenie, ak je visualizer dostupný
+    connect(&dlg, &errorDialog::requestZoneHighlight, lidarVis, &LidarVisualizer::toggleWallHighlight);
+
+    dlg.exec(); // Zobrazí sa modálne (čaká)
+}
+void MainWindow::showCollisionError()
+{
+    // Vytvoríme a zobrazíme dialóg
+    errorDialog dlg;
+    dlg.setModal(true); // Aby sa nedalo klikať inde kým nezavrieš okno
+    dlg.exec(); // Zobrazí okno a čaká na zavretie
+}
+

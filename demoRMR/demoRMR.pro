@@ -132,6 +132,8 @@ LIBS += -L$$PWD/../amcl/lib -lamcl
     }
 }  # end DISABLE_OPENCV guard
 SOURCES += main.cpp\
+        batteryindicator.cpp \
+        errordialog.cpp \
         helpwindow.cpp \
         lidarvisualizer.cpp \
         mainwindow.cpp \
@@ -139,12 +141,15 @@ SOURCES += main.cpp\
         robot.cpp
 
 HEADERS  += mainwindow.h \
+    batteryindicator.h \
+    errordialog.h \
     helpwindow.h \
     lidarvisualizer.h \
     mapa.h \
     robot.h
 
 FORMS    += mainwindow.ui \
+    errordialog.ui \
     helpwindow.ui
 message(DEFINES in demoRMR: $$DEFINES)  # Debugging message
 

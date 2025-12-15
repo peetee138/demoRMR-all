@@ -34,6 +34,7 @@ public:
     //tato funkcia fyzicky posiela hodnoty do robota
     void setSpeed(double forw,double rots);
 signals:
+    void publishBattery(double bateria);
     void publishPosition(double x, double y, double z);
     void publishAMCLPosition(double x, double y, double z);
     void publishLidar(const LaserMeasurement &lidata);

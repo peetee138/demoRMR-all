@@ -5,13 +5,22 @@ LidarVisualizer::LidarVisualizer(QWidget *parent) : QWidget(parent)
 {
     _robot = nullptr;
     hasData = false;
-
+    drawPath = false;
+    pozorStena = false;
+    lastCollisionState = false; // Inicializácia
     // Zoznam sa inicializuje automaticky prazdny
+    m_highlightWalls = false;
 
     QPalette pal = palette();
     pal.setColor(QPalette::Window, Qt::black);
     this->setAutoFillBackground(true);
     this->setPalette(pal);
+}
+
+void LidarVisualizer::toggleWallHighlight(bool enable)
+{
+    m_highlightWalls = enable;
+    update(); // Vynúti prekreslenie
 }
 
 void LidarVisualizer::setRobot(robot *robotPtr)
@@ -52,20 +61,22 @@ void LidarVisualizer::mousePressEvent(QMouseEvent *event)
     // 4. Overenie hranic
     if(gridX >= 0 && gridX < cols && gridY >= 0 && gridY < rows)
     {
-        // ... ZVYŠOK TVOJHO KÓDU PRE KLIKANIE (KONTROLA STENY, PRIDANIE BODU) ...
-        // (Skopíruj si sem vnútro podmienky z tvojho pôvodného kódu)
-
         // Priklad pre istotu:
         int index = _robot->getAmclMap().index(gridX, gridY);
         unsigned int mapValue = _robot->getAmclMap().distanceField[index];
-        if (mapValue >= 1 && mapValue <= 4) return;
+
+        if (mapValue >= 1 && mapValue <= 3) {
+            qDebug() << "Klik do zakazanej zony!";
+            emit forbiddenZoneClicked(); // Vysleme signal
+            return; // A skoncime, nepridavame bod
+        }
 
         PointType clickedType;
         if (event->button() == Qt::LeftButton) clickedType = POINT_BLUE;
         else if (event->button() == Qt::RightButton) clickedType = POINT_PURPLE;
         else return;
 
-        // ... Logika pridania do vectora points ...
+
         bool found = false;
         for (auto it = points.begin(); it != points.end(); ++it) {
             if (it->x == gridX && it->y == gridY) {
@@ -100,7 +111,6 @@ void LidarVisualizer::paintEvent(QPaintEvent *event)
     QPen pero;
     pero.setStyle(Qt::SolidLine);
     pero.setWidth(3);
-    pero.setColor(Qt::green);
     painter.setPen(pero);
     painter.drawRect(mapRect.adjusted(0,0,-1,-1));
 
@@ -119,26 +129,120 @@ void LidarVisualizer::paintEvent(QPaintEvent *event)
     for (int r = 0; r < rows; ++r) {
         for (int c = 0; c < cols; ++c) {
             unsigned int val = _robot->getAmclMap().distanceField[_robot->getAmclMap().index(c,r)];
-            if (val == 1) painter.setBrush(QColor(0, 200, 0));
-            else if (val >= 2 && val <= 4) painter.setBrush(QColor(100, 100, 0));
-            else painter.setBrush(Qt::black);
+
+            // Logika farieb
+            if (val == 1) {
+                // Stena
+                if(m_highlightWalls) painter.setBrush(Qt::yellow);
+                else painter.setBrush(QColor(255, 255, 255));
+            }
+            else if (val >= 2 && val <= 3) {
+                // Inflacna zona (okolo steny)
+                if(m_highlightWalls) painter.setBrush(QColor(255, 255, 0)); // Tmavsia zlta
+                else painter.setBrush(QColor(0, 0, 0));
+            }
+            else {
+                // Volny priestor
+                painter.setBrush(Qt::black);
+            }
 
             painter.setPen(Qt::NoPen);
             QRectF cellRect(mapRect.x() + c * cellWidth, mapRect.y() + r * cellHeight, cellWidth, cellHeight);
             painter.drawRect(cellRect);
         }
     }
-
-    // Kreslenie bodov
-    for(const auto& p : points)
+    // --- 2. Kreslenie bodov (UPRAVENÉ: Zelené pre prejdené, Modré/Fialové pre budúce) ---
+    for(size_t i = 0; i < points.size(); ++i)
     {
-        painter.setBrush((p.type == POINT_BLUE) ? Qt::blue : Qt::magenta);
+        const auto& p = points[i];
+
+        // Rozhodovanie o farbe podľa indexu
+        if (static_cast<int>(i) < m_currentIndex) {
+            // Bod už bol dosiahnutý -> ZELENÁ
+            painter.setBrush(Qt::green);
+        } else {
+            // Bod ešte nebol dosiahnutý -> MODRÁ (Waypoint) alebo FIALOVÁ (Task)
+            painter.setBrush((p.type == POINT_BLUE) ? Qt::blue : Qt::magenta);
+        }
+
         painter.setPen(Qt::white);
         QRectF cellRect(mapRect.x() + p.x * cellWidth, mapRect.y() + p.y * cellHeight, cellWidth, cellHeight);
         painter.drawRect(cellRect);
     }
 
-    // --- 2. Kreslenie robota (Laser data) ---
+    // --- 3. KRESLENIE TRASY (UPRAVENÉ: Dynamické prepojenie) ---
+    if (drawPath) {
+
+        // Na začiatku povieme, že všetko je OK.
+        pozorStena = false;
+
+        // Pripravíme si perá
+        QPen okPen(Qt::yellow);       okPen.setWidth(2);
+        QPen robotPenLine(Qt::green); robotPenLine.setWidth(2);
+        QPen badPen(Qt::red);         badPen.setWidth(2);
+
+        // A) Čiara od ROBOTA k AKTUÁLNEMU bodu
+        // Skontrolujeme, či sme už neprešli všetky body (či index nie je mimo rozsahu)
+        if (m_currentIndex < static_cast<int>(points.size())) {
+
+            float rx = _robot->getBestParticle().x;
+            float ry = _robot->getBestParticle().y;
+            int rgx, rgy;
+            _robot->getGridCoordinates(rx, ry, rgx, rgy);
+
+            // Cieľom je bod na aktuálnom indexe
+            MapPoint targetP = points[m_currentIndex];
+
+            // 1. Skontrolujeme kolíziu
+            bool crash = checkLineCollision(rgx, rgy, targetP.x, targetP.y);
+
+            // 2. Nastavíme farbu a premennú
+            if (crash) {
+                painter.setPen(badPen);
+                pozorStena = true;
+            } else {
+                painter.setPen(robotPenLine);
+            }
+
+            // 3. Vykreslíme
+            double rScreenX = mapRect.x() + rgx * cellWidth + cellWidth / 2.0;
+            double rScreenY = mapRect.y() + rgy * cellHeight + cellHeight / 2.0;
+            double tx = mapRect.x() + targetP.x * cellWidth + cellWidth / 2.0;
+            double ty = mapRect.y() + targetP.y * cellHeight + cellHeight / 2.0;
+
+            painter.drawLine(QPointF(rScreenX, rScreenY), QPointF(tx, ty));
+        }
+
+        // B) Čiary medzi OSTATNÝMI BODMI (len tie, ktoré ešte neboli prejdené)
+        if (points.size() > 1) {
+            // Cyklus začína od m_currentIndex, aby sme nekreslili čiary medzi už prejdenými bodmi
+            for (size_t i = m_currentIndex; i < points.size() - 1; ++i) {
+                MapPoint p1 = points[i];
+                MapPoint p2 = points[i+1];
+
+                // 1. Skontrolujeme kolíziu
+                bool crash = checkLineCollision(p1.x, p1.y, p2.x, p2.y);
+
+                // 2. Nastavíme farbu a premennú
+                if (crash) {
+                    painter.setPen(badPen);
+                    pozorStena = true;
+                } else {
+                    painter.setPen(okPen);
+                }
+
+                // 3. Vykreslíme
+                double x1 = mapRect.x() + p1.x * cellWidth + cellWidth / 2.0;
+                double y1 = mapRect.y() + p1.y * cellHeight + cellHeight / 2.0;
+                double x2 = mapRect.x() + p2.x * cellWidth + cellWidth / 2.0;
+                double y2 = mapRect.y() + p2.y * cellHeight + cellHeight / 2.0;
+
+                painter.drawLine(QPointF(x1, y1), QPointF(x2, y2));
+            }
+        }
+    }
+
+    // --- 4. Kreslenie robota (Laser data) ---
     float robotXp = _robot->getBestParticle().x;
     float robotYp = _robot->getBestParticle().y;
     float robotThetaP = _robot->getBestParticle().theta;
@@ -157,61 +261,95 @@ void LidarVisualizer::paintEvent(QPaintEvent *event)
         painter.drawRect(cellRect);
     }
 
-    // --- 3. Kreslenie samotneho ROBOTA ---
-
-    // A) Ziskame grid suradnice stredu robota
+    // --- 5. Kreslenie samotneho ROBOTA ---
     int robotGx, robotGy;
     _robot->getGridCoordinates(robotXp, robotYp, robotGx, robotGy);
 
-    // Prepocitame na pixely obrazovky
     double rCenterX = mapRect.x() + robotGx * cellWidth + cellWidth/2.0;
     double rCenterY = mapRect.y() + robotGy * cellHeight + cellHeight/2.0;
 
     QPoint center(static_cast<int>(rCenterX), static_cast<int>(rCenterY));
 
-    // B) Nastavenie Pera - Kruhy
     QPen robotPen(Qt::red);
     robotPen.setWidth(3);
     painter.setBrush(Qt::NoBrush);
 
-    // 1. Červený kruh (14)
     robotPen.setColor(Qt::red);
     painter.setPen(robotPen);
     painter.drawEllipse(center, 14, 14);
 
-    // 2. Sivý kruh (17)
     robotPen.setColor(Qt::gray);
     painter.setPen(robotPen);
     painter.drawEllipse(center, 17, 17);
 
-    // 3. Biely kruh vonkajší (21)
     robotPen.setColor(Qt::white);
     painter.setPen(robotPen);
     painter.drawEllipse(center, 21, 21);
-
-    // 4. Biely kruh vnútorný (10)
     painter.drawEllipse(center, 10, 10);
 
-    // 5. Čiara smeru (nos) - Plynulá verzia
-    // Nepoužívame mriežku, ale priamu trigonometriu na pixeloch,
-    // aby nos "netancoval" pri otáčaní.
-
-    double noseLength = 25.0; // Dĺžka nosa v pixeloch
-
-    // Výpočet koncového bodu čiary
-    // X = stred + dĺžka * cos(uhol)
-    // Y = stred - dĺžka * sin(uhol)  <-- MÍNUS, lebo Y os na obrazovke ide smerom dole!
-
+    double noseLength = 25.0;
     double nX = center.x() + noseLength * std::cos(robotThetaP);
     double nY = center.y() - noseLength * std::sin(robotThetaP);
 
-    // Nastavíme bielu farbu pre nos (lebo predchádzajúci kruh bol biely)
     QPen nosePen(Qt::white);
     nosePen.setWidth(2);
     painter.setPen(nosePen);
-
-    // Nakreslíme čiaru zo stredu robota
     painter.drawLine(center, QPointF(nX, nY));
-
 #endif
+    if (pozorStena == true && lastCollisionState == false) {
+        // Pošleme signál do MainWindow
+        emit collisionDetected();
+    }
+
+    // Uložíme si aktuálny stav pre ďalšie kolo
+    lastCollisionState = pozorStena;
 }
+bool LidarVisualizer::checkLineCollision(int x1, int y1, int x2, int y2)
+{
+    if(!_robot) return false;
+
+    // Rozmery mapy
+    int mapW = _robot->getAmclMap().width;
+    int mapH = _robot->getAmclMap().height;
+
+    // Bresenhamov algoritmus
+    int dx = abs(x2 - x1);
+    int dy = abs(y2 - y1);
+    int sx = (x1 < x2) ? 1 : -1;
+    int sy = (y1 < y2) ? 1 : -1;
+    int err = dx - dy;
+
+    int cx = x1;
+    int cy = y1;
+
+    while (true) {
+        // --- OPRAVA: Ignorujeme štartovací bod ---
+        // Ak stojíme na mieste, ktoré je "trochu" nebezpečné (hodnota 2),
+        // nechceme, aby to hneď vyhlásilo chybu. Chceme vedieť, či NARAŹÍME do steny cestou.
+        if (cx == x1 && cy == y1) {
+            // Nerob nic, len chod dalej
+        }
+        else {
+            // Kontrola hraníc
+            if (cx >= 0 && cx < mapW && cy >= 0 && cy < mapH) {
+                int index = _robot->getAmclMap().index(cx, cy);
+                // Pretypovanie na int pre istotu
+                int val = (int)_robot->getAmclMap().distanceField[index];
+
+                // Ak je to stena alebo inflačná zóna (>= 2)
+                if (val >= 1 && val < 3) {
+                    qDebug() << "KOLIZIA na [" << cx << "," << cy << "] hodnota:" << val;
+                    return true;
+                }
+            }
+        }
+
+        if (cx == x2 && cy == y2) break;
+
+        int e2 = 2 * err;
+        if (e2 > -dy) { err -= dy; cx += sx; }
+        if (e2 < dx) { err += dx; cy += sy; }
+    }
+    return false;
+}
+

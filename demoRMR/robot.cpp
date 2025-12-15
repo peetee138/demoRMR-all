@@ -22,7 +22,7 @@ void robot::initAndStartRobot(std::string ipaddress)
     robotCom.setLaserParameters(ipaddress,52999,5299,/*[](LaserMeasurement dat)->int{std::cout<<"som z lambdy callback"<<std::endl;return 0;}*/std::bind(&robot::processThisLidar,this,std::placeholders::_1));
     robotCom.setRobotParameters(ipaddress,53000,5300,std::bind(&robot::processThisRobot,this,std::placeholders::_1));
 #ifndef DISABLE_AMCL
-    robotCom.setAMCLParameters("mapa.txt",15000,0.01,2,std::bind(&robot::processThisAMCLPosition,this,std::placeholders::_1,std::placeholders::_2,std::placeholders::_3));
+    robotCom.setAMCLParameters("mapa.txt",1500,0.01,2,std::bind(&robot::processThisAMCLPosition,this,std::placeholders::_1,std::placeholders::_2,std::placeholders::_3));
 #endif
 #ifndef DISABLE_OPENCV
     robotCom.setCameraParameters("http://"+ipaddress+":8000/stream.mjpg",std::bind(&robot::processThisCamera,this,std::placeholders::_1));
@@ -63,7 +63,11 @@ int robot::processThisRobot(TKobukiData robotdata)
 
 
     ///tu mozete robit s datami z robota
+    double bateria = ((double)robotdata.Battery)/255*100;
+    bateria = 82.5;
+    qDebug()<<"batria: "<<bateria;
 
+    emit publishBattery(bateria);
 
     if(startLoging==true)
     {
@@ -115,8 +119,8 @@ int robot::processThisRobot(TKobukiData robotdata)
 int robot::processThisAMCLPosition(float x, float y, float theta)
 {
     std::cout<<"moja amcl poloha je "<<x<<" "<<y<<" "<<theta<<std::endl;
-    x=x-5745;
-    y=y-845;
+    //x=x-5750;
+    y = 5800 + 850 - y;
     theta = theta - M_PI/2;
     emit publishAMCLPosition(x,y,theta);
     return 0;
@@ -174,3 +178,4 @@ int robot::processThisSkeleton(skeleton skeledata)
     return 0;
 }
 #endif
+
