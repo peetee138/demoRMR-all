@@ -26,14 +26,18 @@ class LidarVisualizer : public QWidget
     Q_OBJECT
 public:
     explicit LidarVisualizer(QWidget *parent = nullptr);
-    void togglePathDrawing(bool enable) { drawPath = enable; update(); }
+    void togglePathDrawing(bool enable); //{ drawPath = enable; update(); }
     void setCurrentIndex(int index);
 
     void setRobot(robot* robotPtr);
     void updateLidarData(const LaserMeasurement &data);
 
     void toggleWallHighlight(bool enable);
+    void removeInvalidPoints();
 
+    int getLastCheckedCount() const { return m_lastCheckedCount; }
+    int getFirstCollisionIndex() const { return m_firstCollisionIndex; }
+    bool isPathDrawActive() const { return drawPath; }
     // Funkcia na vratenie vsetkych bodov (ak by si ich chcel poslat robotovi)
     std::vector<MapPoint> getPoints() const { return points; }
 
@@ -61,6 +65,9 @@ private:
     std::vector<MapPoint> points;
     int m_currentIndex = 0;
     bool m_highlightWalls = false; // Premenna pre stav zlteho zobrazenia
+    int m_firstCollisionIndex;
+    int m_lastCheckedCount;
+
     // Pomocná funkcia na výpočet obdĺžnika s pomerom 82:66
     QRect getMapRect() const {
         if (width() == 0 || height() == 0) return QRect();

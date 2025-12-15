@@ -138,7 +138,8 @@ SOURCES += main.cpp\
         lidarvisualizer.cpp \
         mainwindow.cpp \
         mapa.cpp \
-        robot.cpp
+        robot.cpp \
+        wallerrordialog.cpp
 
 HEADERS  += mainwindow.h \
     batteryindicator.h \
@@ -146,11 +147,13 @@ HEADERS  += mainwindow.h \
     helpwindow.h \
     lidarvisualizer.h \
     mapa.h \
-    robot.h
+    robot.h \
+    wallerrordialog.h
 
 FORMS    += mainwindow.ui \
     errordialog.ui \
-    helpwindow.ui
+    helpwindow.ui \
+    wallerrordialog.ui
 message(DEFINES in demoRMR: $$DEFINES)  # Debugging message
 
 RESOURCES += \

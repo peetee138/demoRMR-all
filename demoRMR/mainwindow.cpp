@@ -8,6 +8,7 @@
 #include "helpwindow.h"
 #include <QHeaderView>
 #include "errordialog.h"
+#include "wallerrordialog.h"
 
 MainWindow::MainWindow(QWidget *parent) :
     QMainWindow(parent),
@@ -115,6 +116,8 @@ MainWindow::MainWindow(QWidget *parent) :
 #endif
 
     _robot.startLoging=false;
+    isDarkMode = false; // Začíname v Light Mode
+    updateTheme();
 }
 
 MainWindow::~MainWindow()
@@ -215,9 +218,21 @@ void MainWindow::on_pushButton_13_clicked()
     navigationPoints = lidarVis->getPoints();
 
     if(navigationPoints.empty()) {
-        QMessageBox::warning(this, "Navigácia", "Žiadne body na trase!");
+        QMessageBox::warning(this, "Pozor", "Žiadne body!");
         return;
     }
+
+    // --- NOVÁ KONTROLA: Sú body prepojené? ---
+    if (!lidarVis->isPathDrawActive()) {
+        QMessageBox::warning(this, "Pozor", "Trasa nie je skontrolovaná!\nStlačte najprv tlačidlo 'Kontrola'");
+        return;
+    }
+
+    if (lidarVis->getLastCheckedCount() == 0) {
+        QMessageBox::warning(this, "Pozor", "Žiadne body!");
+        return;
+    }
+    // -----------------------------------------
 
     // 2. Nastavíme počiatočný stav
     currentPointIndex = 0;
@@ -232,7 +247,7 @@ void MainWindow::on_pushButton_13_clicked()
         navTimer->start(50);
     }
 
-    qDebug() << "Startujem navigaciu. Pocet bodov:" << navigationPoints.size();
+    qDebug() << "Startujem navigaciu. Pocet bodov:" << navigationPoints.size()<< " Povolene len po index:" << lidarVis->getLastCheckedCount();
 }
 
 void MainWindow::on_pushButton_8_clicked()
@@ -438,8 +453,25 @@ void MainWindow::navigationLoop()
         return;
     }
 
+    // Zistíme, koľko bodov bolo skutočne prepojených čiarou
+    int allowedPoints = 0;
+    if (lidarVis) {
+        allowedPoints = lidarVis->getLastCheckedCount();
+        int crashIndex = lidarVis->getFirstCollisionIndex();
+        if (crashIndex != -2) {
+            int safeLimit = crashIndex + 1;
+            if (safeLimit < allowedPoints) {
+                allowedPoints = safeLimit;
+            }
+        }
+        std::vector<MapPoint> freshPoints = lidarVis->getPoints();
+        if (freshPoints.size() != navigationPoints.size() || freshPoints.size() > 0) { // aktualizacia bodov
+            navigationPoints = freshPoints;
+        }
+    }
+
     // --- 1. Kontrola konca trasy ---
-    if (currentPointIndex >= navigationPoints.size()) {
+    if (currentPointIndex >= navigationPoints.size()||currentPointIndex>=allowedPoints) {
         qDebug() << "Koniec trasy.";
         state = IDLE;
         _robot.setSpeedVal(0,0);
@@ -576,12 +608,6 @@ void MainWindow::navigationLoop()
     }
 }
 
-void LidarVisualizer::setCurrentIndex(int index)
-{
-    m_currentIndex = index;
-    update(); // Vynúti prekreslenie
-}
-
 void MainWindow::on_pushButton_7_clicked()
 {
     HelpWindow helpWind;
@@ -608,11 +634,137 @@ void MainWindow::showForbiddenError()
 
     dlg.exec(); // Zobrazí sa modálne (čaká)
 }
-void MainWindow::showCollisionError()
+/*void MainWindow::showCollisionError()
 {
     // Vytvoríme a zobrazíme dialóg
     errorDialog dlg;
     dlg.setModal(true); // Aby sa nedalo klikať inde kým nezavrieš okno
     dlg.exec(); // Zobrazí okno a čaká na zavretie
+}*/
+void MainWindow::showCollisionError()
+{
+    // Použijeme správny dialog pre stenu
+    wallErrorDialog dlg(this);
+    dlg.setModal(true);
+
+    // PREPOJENIE:
+    // Keď v dialogu klikneš DELETE -> zavolá sa vo Visualizeri funkcia na mazanie
+    connect(&dlg, &wallErrorDialog::deleteRequested, lidarVis, &LidarVisualizer::removeInvalidPoints);
+
+    dlg.exec();
 }
 
+void MainWindow::on_pushButton_10_clicked()
+{
+    // Prepnutie stavu
+    isDarkMode = !isDarkMode;
+
+    // Zmena textu na tlacidle podla stavu
+    if(isDarkMode) ui->pushButton_10->setText("Light Mode");
+    else ui->pushButton_10->setText("Dark Mode");
+
+    // Aplikovanie stylu
+    updateTheme();
+}
+
+void MainWindow::updateTheme()
+{
+    QString style;
+
+    if (isDarkMode) {
+        // --- DARK MODE ---
+        style = R"(
+            QMainWindow, QWidget {
+                background-color: #2b2b2b;
+                color: #ffffff;
+            }
+            QPushButton {
+                background-color: #404040;
+                border: 1px solid #555;
+                border-radius: 5px;
+                padding: 5px;
+                color: #ffffff;
+            }
+            QPushButton:hover {
+                background-color: #505050;
+            }
+            QPushButton:pressed {
+                background-color: #252525;
+            }
+            QLineEdit {
+                background-color: #1e1e1e;
+                border: 1px solid #555;
+                color: #ffffff;
+            }
+            QTableWidget {
+                background-color: #1e1e1e;
+                color: #ffffff;
+                gridline-color: #444;
+            }
+            QHeaderView::section {
+                background-color: #404040;
+                color: #ffffff;
+                border: 1px solid #555;
+            }
+            QLabel {
+                color: #ffffff;
+            }
+        )";
+    } else {
+        // --- LIGHT MODE ---
+        style = R"(
+            QMainWindow, QWidget {
+                background-color: #f0f0f0;
+                color: #000000;
+            }
+            QPushButton {
+                background-color: #e0e0e0;
+                border: 1px solid #a0a0a0;
+                border-radius: 5px;
+                padding: 5px;
+                color: #000000;
+            }
+            QPushButton:hover {
+                background-color: #d0d0d0;
+            }
+            QPushButton:pressed {
+                background-color: #b0b0b0;
+            }
+            QLineEdit {
+                background-color: #ffffff;
+                border: 1px solid #ccc;
+                color: #000000;
+            }
+            QTableWidget {
+                background-color: #ffffff;
+                color: #000000;
+                gridline-color: #ccc;
+            }
+            QHeaderView::section {
+                background-color: #e0e0e0;
+                color: #000000;
+                border: 1px solid #ccc;
+            }
+            QLabel {
+                color: #000000;
+            }
+        )";
+    }
+
+    // Aplikujeme štýl na celé okno
+    this->setStyleSheet(style);
+
+    // --- ŠPECIÁLNE VÝNIMKY ---
+
+    // Kamera musí ostať čierna, inak by biele pozadie rušilo obraz
+    if(cameraLabel) {
+        cameraLabel->setStyleSheet("background-color: black; color: white; border: 2px solid gray;");
+    }
+
+    // Lidar visualizer má vlastné kreslenie (čierne pozadie v paintEvent),
+    // takže stylesheet ho neovplyvní negatívne, ale môžeme mu nastaviť border
+    if(lidarVis) {
+        // Lidar si pozadie riesi sam, tu len resetneme dedicnost ak treba
+        lidarVis->setStyleSheet("background-color: black;");
+    }
+}

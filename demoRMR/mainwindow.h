@@ -68,7 +68,7 @@ public:
 
     void on_pushButton_8_clicked();
     void on_pushButton_9_clicked();
-
+    void on_pushButton_10_clicked();
 
     void on_pushButton_12_clicked();
     void on_pushButton_13_clicked();
@@ -95,7 +95,7 @@ public:
 #ifndef DISABLE_SKELETON
     int paintThisSkeleton(const skeleton &skeledata);
 #endif
-    //void on_pushButton_10_clicked();
+
     //void on_pushButton_8_clicked();
     void on_pushButton_7_clicked();
 
@@ -105,6 +105,9 @@ protected:
 
 
 private:
+    bool isDarkMode;
+    void updateTheme();
+
     bool notaus = false;
 
     QTimer *navTimer;           // Časovač pre riadenie pohybu
