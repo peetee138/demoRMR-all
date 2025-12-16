@@ -28,7 +28,7 @@
 #include "lidarvisualizer.h"
 #include <QVBoxLayout> // Dôležité pre vloženie widgetu
 #include "batteryindicator.h" // <--- PRIDAT
-
+#include <QDir>
 
 #include "robot.h"
 #ifndef DISABLE_JOYSTICK
@@ -83,7 +83,7 @@ public:
 
     //void keyPressEvent(QKeyEvent *event);
 
-
+    void recordLidarFrame(); // Slot, ktorý sa bude volat 20x za sekundu
     //void closeEvent(QCloseEvent *event) override;
 
     void navigationLoop(); // Slot, ktorý sa bude volať každých 50ms
@@ -105,6 +105,19 @@ protected:
 
 
 private:
+    // --- NAHRÁVANIE ---
+    cv::VideoWriter videoWriterCamera; // Premenoval som pre prehľadnosť
+    cv::VideoWriter videoWriterLidar;  // Nový writer pre lidar
+    QTimer *lidarRecordTimer;          // Časovač pre snímanie lidaru
+    cv::Size lidarVideoSize;
+
+    bool recording;
+    bool koniecMisie; // Premenná, ktorú si chcel
+
+    void startRecording(); // Funkcia na vytvorenie priečinka a start
+    void stopRecording();  // Funkcia na ukončenie a uloženie
+
+
     bool isDarkMode;
     void updateTheme();
 
@@ -130,9 +143,6 @@ private:
     LidarVisualizer *lidarVis; // <--- PRIDAJ TOTO
     QLabel *cameraLabel;       // Widget pre zobrazenie kamery
     bool isLidarBig;           // Premenna stavu
-
-    cv::VideoWriter videoWriter;
-    bool recording = false;
 
     QString videoPath;          // vygeneruje sa automaticky v konstruktore
     QString photoPath;          // vygeneruje sa automaticky v konstruktore

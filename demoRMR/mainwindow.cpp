@@ -23,6 +23,14 @@ MainWindow::MainWindow(QWidget *parent) :
     lidarVis = new LidarVisualizer(this);
     lidarVis->setRobot(&_robot);
 
+    // Inicializácia premenných
+    recording = false;
+    koniecMisie = false;
+
+    // Časovač pre nahrávanie Lidaru (napr. 20 FPS = 50ms)
+    lidarRecordTimer = new QTimer(this);
+    connect(lidarRecordTimer, &QTimer::timeout, this, &MainWindow::recordLidarFrame);
+
     connect(lidarVis, &LidarVisualizer::collisionDetected, this, &MainWindow::showCollisionError);
 
     // Kamera (QLabel namiesto paintEvent)
@@ -242,6 +250,8 @@ void MainWindow::on_pushButton_13_clicked()
 
     state = MOVING;
 
+    startRecording(); //nahravie spustene
+
     // 3. Spustíme časovač (cyklus pobeží každých 50ms)
     if(!navTimer->isActive()) {
         navTimer->start(50);
@@ -351,6 +361,9 @@ int MainWindow::paintThisLidar(const LaserMeasurement &laserData)
 // --- ZOBRAZENIE KAMERY DO QLABEL ---
 int MainWindow::paintThisCamera(const cv::Mat &cameraData)
 {
+    // OCHRANA: Ak sú dáta prázdne, nerob nič
+    if (cameraData.empty() || cameraData.cols <= 0 || cameraData.rows <= 0) return 0;
+
     cv::Mat frameCopy;
     cameraData.copyTo(frameCopy);
     frameCopy.copyTo(frame[(actIndex+1)%3]);
@@ -366,31 +379,53 @@ int MainWindow::paintThisCamera(const cv::Mat &cameraData)
 
     if(cameraLabel) {
         QPixmap pix = QPixmap::fromImage(qimg);
-        // Prispôsobí sa veľkosti widgetu (či už je veľký alebo malý)
-        // a zachová pomer strán
         QPixmap scaledPix = pix.scaled(cameraLabel->size(), Qt::KeepAspectRatio, Qt::SmoothTransformation);
         cameraLabel->setPixmap(scaledPix);
     }
 
-    if (!recording) {
-        int fps = 20;
-        cv::Size size(frameCopy.cols, frameCopy.rows);
-        if (!videoWriter.isOpened() && !videoPath.isEmpty()) {
-            videoWriter.open(videoPath.toStdString(), cv::VideoWriter::fourcc('M','J','P','G'), fps, size, true);
-            if(videoWriter.isOpened()) recording = true;
-        }
-    }
-    if (recording && videoWriter.isOpened()) {
-        videoWriter.write(frameCopy);
+    // --- 3. Nahrávanie videa ---
+    if (recording && videoWriterCamera.isOpened()) {
+        videoWriterCamera.write(frameCopy);
     }
 
+    // --- 4. DETEKCIA LOPTY A ULOŽENIE FOTKY ---
+    // Kontrolujeme !photoTaken, aby sme uložili fotku a zastavili misiu iba RAZ
     if (!photoTaken && detectBall(frameCopy)) {
-        cv::imwrite(photoPath.toStdString(), frameCopy);
-        photoTaken = true;
-        if (recording) {
-            recording = false;
-            videoWriter.release();
+
+        qDebug() << "Lopta nájdená! Začínam proces ukončenia.";
+
+        // A) Príprava cesty a názvu súboru
+        QString saveDir = "C:/Users/petri/Downloads/kamera_kobuki/Fotka/";
+        QDir dir(saveDir);
+        if (!dir.exists()) {
+            dir.mkpath("."); // Vytvorí priečinok ak neexistuje
         }
+
+        QDateTime now = QDateTime::currentDateTime();
+        QString timestamp = now.toString("yyyy_MM_dd_hh_mm_ss");
+        QString finalPhotoPath = saveDir + "fotka_lopty_" + timestamp + ".jpg";
+
+        // B) Uloženie fotografie
+        bool saved = cv::imwrite(finalPhotoPath.toStdString(), frameCopy);
+        if(saved) {
+            qDebug() << "Fotografia úspešne uložená:" << finalPhotoPath;
+        } else {
+            qDebug() << "CHYBA: Fotografia sa nepodarila uložiť!";
+        }
+
+        // C) Nastavenie príznaku, že už sme loptu našli
+        photoTaken = true;
+
+        // D) Zastavenie nahrávania a robota
+        if (recording) {
+            stopRecording(); // Toto zavrie video súbory
+        }
+
+        state = IDLE;             // Zastaví navigačnú slučku
+        _robot.setSpeedVal(0, 0); // Zastaví fyzicky robota
+
+        // E) Informácia pre užívateľa
+        QMessageBox::information(this, "Misia Úspešná", "Lopta bola nájdená!\nFotografia uložená.\nMisia ukončená.");
     }
 
     return 0;
@@ -410,39 +445,70 @@ bool MainWindow::detectBall(const cv::Mat &frame)
 {
     cv::Mat hsv;
     cv::cvtColor(frame, hsv, cv::COLOR_BGR2HSV);
-    cv::Mat lowerRed, upperRed, redMask, yellowMask, mask;
+    cv::Mat lowerRed1, upperRed1, lowerRed2, upperRed2, redMask;
 
-    cv::inRange(hsv, cv::Scalar(0, 150, 80), cv::Scalar(10, 255, 255), lowerRed);
-    cv::inRange(hsv, cv::Scalar(170, 150, 80), cv::Scalar(180, 255, 255), upperRed);
-    redMask = lowerRed | upperRed;
-    cv::inRange(hsv, cv::Scalar(15, 120, 120), cv::Scalar(35, 255, 255), yellowMask);
-    mask = redMask | yellowMask;
+    cv::inRange(hsv, cv::Scalar(0, 150, 80), cv::Scalar(10, 255, 255), lowerRed1);
+    cv::inRange(hsv, cv::Scalar(170, 150, 80), cv::Scalar(180, 255, 255), lowerRed2);
 
-    std::vector<std::vector<cv::Point>> contours;
-    cv::findContours(mask, contours, cv::RETR_EXTERNAL, cv::CHAIN_APPROX_SIMPLE);
+    redMask = lowerRed1 | lowerRed2;
 
-    for (auto &c : contours) {
-        double area = cv::contourArea(c);
-        if (area > 800) return true;
+    //hough transformacia
+    cv::Mat gray;
+    cv::cvtColor(frame, gray, cv::COLOR_BGR2GRAY);
+    cv::GaussianBlur(gray, gray, cv::Size(5, 5),2,2);
+
+    //detegovanie kruhov
+    std::vector<cv::Vec3f> circles;
+
+    //parametre
+    // dp = 1 (rozlíšenie), minDist = frame.rows/8 (min. vzdialenosť medzi kruhmi)
+    // param1 = 100 (Canny edge threshold), param2 = 30 (Accumulator threshold - čím menšie, tým viac falošných kruhov)
+    // minRadius = 10, maxRadius = 400 (rozsah veľkosti lopty)
+    cv::HoughCircles(gray, circles, cv::HOUGH_GRADIENT, 1, gray.rows / 8, 100, 20, 25, 500);
+
+    for (size_t i = 0; i < circles.size(); i++)
+    {
+        cv::Point center(cvRound(circles[i][0]), cvRound(circles[i][1]));
+        int radius = cvRound(circles[i][2]);
+
+        // Vytvoríme ROI (Region of Interest) okolo kruhu
+        // Musíme dávať pozor, aby sme nevyšli z obrazu (Boundary check)
+        int x = std::max(0, center.x - radius);
+        int y = std::max(0, center.y - radius);
+        int w = std::min(frame.cols - x, 2 * radius);
+        int h = std::min(frame.rows - y, 2 * radius);
+
+        if (w <= 0 || h <= 0) continue;
+
+        cv::Rect roiRect(x, y, w, h);
+
+        cv::Mat roiMask = redMask(roiRect);
+
+        //pocet pixelov v Roi
+        int redPixelCount = cv::countNonZero(roiMask);
+
+        int totalPixels = w * h;
+
+        if (totalPixels > 0 && (double)redPixelCount / totalPixels > 0.4)
+        {
+            // Našli sme červený kruh!
+            qDebug()<<"LOPTAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA";
+            return true;
+        }
     }
+
     return false;
 }
+
 void MainWindow::navigationLoop()
 {
-    // Statická premenná si pamätá hodnotu medzi volaniami funkcie (plynulosť)
     static double current_linear_speed = 0.0;
-
-    // Lokálna premenná pre otáčanie (tu rampu nechceme)
     double angular_speed = 0;
 
     // --- 0. NOTAUS ---
     if (notaus == true) {
-        // Okamžité zastavenie
         _robot.setSpeedVal(0, 0);
-
-        // Resetujeme pamäť rýchlosti -> po odbrzdení pôjde od nuly
         current_linear_speed = 0.0;
-
         return;
     }
 
@@ -453,67 +519,60 @@ void MainWindow::navigationLoop()
         return;
     }
 
-    // Zistíme, koľko bodov bolo skutočne prepojených čiarou
+    // --- 1. DYNAMICKÁ AKTUALIZÁCIA ---
     int allowedPoints = 0;
     if (lidarVis) {
         allowedPoints = lidarVis->getLastCheckedCount();
         int crashIndex = lidarVis->getFirstCollisionIndex();
         if (crashIndex != -2) {
             int safeLimit = crashIndex + 1;
-            if (safeLimit < allowedPoints) {
-                allowedPoints = safeLimit;
-            }
+            if (safeLimit < allowedPoints) allowedPoints = safeLimit;
         }
         std::vector<MapPoint> freshPoints = lidarVis->getPoints();
-        if (freshPoints.size() != navigationPoints.size() || freshPoints.size() > 0) { // aktualizacia bodov
+        if (freshPoints.size() != navigationPoints.size() || freshPoints.size() > 0) {
             navigationPoints = freshPoints;
         }
     }
 
-    // --- 1. Kontrola konca trasy ---
-    if (currentPointIndex >= navigationPoints.size()||currentPointIndex>=allowedPoints) {
-        qDebug() << "Koniec trasy.";
+    // --- 2. KONTROLA KONCA TRASY (Pre Waypointy) ---
+    // Táto kontrola funguje hlavne pre modré body, keď cez ne prejdeme.
+    if (currentPointIndex >= navigationPoints.size() || currentPointIndex >= allowedPoints) {
+        qDebug() << "Koniec trasy (Waypoint).";
         state = IDLE;
         _robot.setSpeedVal(0,0);
         current_linear_speed = 0.0;
+
+        if (recording) {
+            stopRecording();
+            QMessageBox::information(this, "Misia", "Misia ukončená (Waypoint). Záznam uložený.");
+        }
         return;
     }
 
     MapPoint pt = navigationPoints[currentPointIndex];
 
-    // Prevod bodu z mapy na mm
     double targetX = pt.x * 100.0;
     double targetY = pt.y * 100.0;
-
-    // --- 2. Výpočet chýb ---
     double dy = robot_X - targetX;
     double dx = robot_Y - targetY;
     double distance = sqrt(dx*dx + dy*dy);
-
     double targetAngle = atan2(dy, dx);
     double errorAngle = targetAngle - robot_Fi;
 
     while (errorAngle > M_PI) errorAngle -= 2 * M_PI;
     while (errorAngle < -M_PI) errorAngle += 2 * M_PI;
 
-    // --- 3. Konštanty ---
     const double tolerance_pos = 50.0;
     const double Kp_angle = 1.8;
     const double Kp_dist = 1.0;
-
-    // RAMPA: O koľko zrýchliť/spomaliť za 50ms
-    // Ak dáš 10, tak z 0 na 300 sa dostane za 1.5 sekundy (30 krokov)
-    // Ak dáš 25, bude to ostrejšie (cca 0.6 sekundy)
     const double RAMP_STEP = 10.0;
 
-    // --- 4. Rozhodovací strom ---
-
-    // A) Sme v cieli?
+    // A) SME V CIELI?
     if (distance < tolerance_pos && state != ROTATING)
     {
         if (pt.type == POINT_PURPLE) {
             _robot.setSpeedVal(0, 0);
-            current_linear_speed = 0.0; // Reset rýchlosti pred rotáciou
+            current_linear_speed = 0.0;
             state = ROTATING;
             totalRotatedAngle = 0.0;
             lastRobotTheta = robot_Fi;
@@ -524,70 +583,48 @@ void MainWindow::navigationLoop()
             currentPointIndex++;
             if(lidarVis) lidarVis->setCurrentIndex(currentPointIndex);
 
+            // Ak bol toto posledný bod (Waypoint), v ďalšom cykle to zachytí kontrola na začiatku
             if (currentPointIndex >= navigationPoints.size()) {
-                state = IDLE;
-                _robot.setSpeedVal(0, 0);
-                current_linear_speed = 0.0;
-                qDebug() << "Ciel dosiahnuty. Koniec.";
-            } else {
-                qDebug() << "Bod dosiahnuty. Pokracujem plynule na dalsi.";
+                // Tu ešte nezastavujeme, necháme prebehnúť ďalší cyklus, ktorý to korektne ukončí
             }
             return;
         }
     }
 
-    // B) Sme vo fáze pohybu (MOVING)
+    // B) MOVING
     if (state == MOVING)
     {
         double required_linear = 0.0;
-
-        // Ak je uhol veľký, stojíme a len točíme
-        if (fabs(errorAngle) > M_PI / 18.0) // 10 stupňov
-        {
+        if (fabs(errorAngle) > M_PI / 18.0) {
             required_linear = 0;
             angular_speed = Kp_angle * errorAngle;
-        }
-        else
-        {
-            // Vypočítame koľko by sme CHCELI ísť
+        } else {
             required_linear = Kp_dist * distance * cos(errorAngle);
             angular_speed = Kp_angle * errorAngle;
         }
 
-        // --- TU JE RAMPOVANIE ---
-
-        // 1. Orezanie žiadaného maxima (aby sme neakcelerovali k 1000ke)
         if (required_linear > 300) required_linear = 300;
-        if (required_linear < 0) required_linear = 0; // Žiadne cúvanie!
+        if (required_linear < 0) required_linear = 0;
 
-        // 2. Postupné pridávanie/uberanie (Rampa)
         if (current_linear_speed < required_linear) {
             current_linear_speed += RAMP_STEP;
-            // Aby sme neprestrelili
             if (current_linear_speed > required_linear) current_linear_speed = required_linear;
-        }
-        else if (current_linear_speed > required_linear) {
+        } else if (current_linear_speed > required_linear) {
             current_linear_speed -= RAMP_STEP;
-            // Aby sme nepodstrelili
             if (current_linear_speed < required_linear) current_linear_speed = required_linear;
         }
 
-        // 3. Poistka (pre istotu)
         if (current_linear_speed < 0) current_linear_speed = 0;
-
-        // Limity uhlovej rýchlosti (bez rampy)
         if (angular_speed > 3.1415/4) angular_speed = 3.1415/4;
         if (angular_speed < -3.1415/4) angular_speed = -3.1415/4;
 
         _robot.setSpeedVal(current_linear_speed, angular_speed);
     }
 
-    // C) Sme vo fáze otáčania na mieste (ROTATING)
+    // C) ROTATING (Task)
     else if (state == ROTATING)
     {
-        // Tu sa uistíme, že lineárna je 0
         current_linear_speed = 0.0;
-
         double delta = robot_Fi - lastRobotTheta;
         while (delta > M_PI) delta -= 2 * M_PI;
         while (delta < -M_PI) delta += 2 * M_PI;
@@ -596,12 +633,29 @@ void MainWindow::navigationLoop()
         lastRobotTheta = robot_Fi;
 
         if (totalRotatedAngle >= 2 * M_PI - 0.2) {
+
+            // Rotácia hotová
             state = MOVING;
             currentPointIndex++;
             if(lidarVis) lidarVis->setCurrentIndex(currentPointIndex);
 
             _robot.setSpeedVal(0, 0);
-            qDebug() << "Rotacia dokoncena. Idem na dalsi bod.";
+            qDebug() << "Rotacia dokoncena.";
+
+            // --- !!! TOTO JE OPRAVA PRE POSLEDNÝ TASK BOD !!! ---
+            // Skontrolujeme, či sme po rotácii už na konci zoznamu
+            if (currentPointIndex >= navigationPoints.size() || currentPointIndex >= allowedPoints) {
+                qDebug() << "Koniec trasy (Task).";
+                state = IDLE;
+                _robot.setSpeedVal(0, 0);
+
+                if (recording) {
+                    stopRecording();
+                    QMessageBox::information(this, "Misia", "Misia ukončená (Task). Záznam uložený.");
+                }
+            }
+            // ----------------------------------------------------
+
         } else {
             _robot.setSpeedVal(0, 0.5);
         }
@@ -767,4 +821,118 @@ void MainWindow::updateTheme()
         // Lidar si pozadie riesi sam, tu len resetneme dedicnost ak treba
         lidarVis->setStyleSheet("background-color: black;");
     }
+}
+
+void MainWindow::startRecording()
+{
+    if (recording) return;
+
+    // 1. Vytvorenie priečinka a cesty (tvoj kód ostáva)
+    QDateTime now = QDateTime::currentDateTime();
+    QString folderName = "Misia_" + now.toString("yyyy_MM_dd_hh_mm_ss");
+    QString basePath = "C:/Users/petri/Downloads/kamera_kobuki/Zaznamy/"; // Uprav si cestu ak treba
+    QString fullPath = basePath + folderName;
+
+    QDir dir;
+    if (!dir.exists(fullPath)) {
+        dir.mkpath(fullPath);
+    }
+
+    QString camFile = fullPath + "/kamera.avi";
+    QString lidarFile = fullPath + "/lidar.avi";
+
+    int fps_1 = 8;
+    int fps_2 = 21;
+
+    // --- OTVORENIE KAMERY ---
+    videoWriterCamera.open(camFile.toStdString(), cv::VideoWriter::fourcc('M','J','P','G'), fps_1, cv::Size(640, 360), true);
+
+    // --- OTVORENIE LIDARU (OPRAVENÉ) ---
+    if(lidarVis) {
+        // Zistíme aktuálnu veľkosť widgetu
+        int w = lidarVis->width();
+        int h = lidarVis->height();
+
+        // Ochrana pred nulovými rozmermi
+        if (w <= 0) w = 640;
+        if (h <= 0) h = 480;
+
+        // !!! DÔLEŽITÉ: Rozmery musia byť párne (násobky 2) !!!
+        if (w % 2 != 0) w--;
+        if (h % 2 != 0) h--;
+
+        // Uložíme si tento rozmer do premennej v triede
+        lidarVideoSize = cv::Size(w, h);
+
+        videoWriterLidar.open(lidarFile.toStdString(), cv::VideoWriter::fourcc('M','J','P','G'), fps_2, lidarVideoSize, true);
+    }
+
+    if (videoWriterCamera.isOpened() && videoWriterLidar.isOpened()) {
+        recording = true;
+        //koniecMisie = false; // ak použivaš tuto premennu
+        lidarRecordTimer->start(1000 / fps_2);
+        qDebug() << "Nahravanie spustene. Lidar rozmer:" << lidarVideoSize.width << "x" << lidarVideoSize.height;
+    } else {
+        qDebug() << "CHYBA: Nepodarilo sa otvorit video subory!";
+        // Pre istotu skúsime zavrieť, ak sa jeden otvoril a druhý nie
+        if (videoWriterCamera.isOpened()) videoWriterCamera.release();
+        if (videoWriterLidar.isOpened()) videoWriterLidar.release();
+    }
+}
+
+void MainWindow::stopRecording()
+{
+    if (!recording) return;
+
+    recording = false;
+    koniecMisie = true; // Splnenie požiadavky
+
+    lidarRecordTimer->stop();
+
+    if (videoWriterCamera.isOpened()) videoWriterCamera.release();
+    if (videoWriterLidar.isOpened()) videoWriterLidar.release();
+
+    qDebug() << "Nahravanie ukoncene. Koniec misie.";
+}
+
+// Funkcia, ktorá "odfotí" Lidar okno a uloží do videa
+void MainWindow::recordLidarFrame()
+{
+    // 1. Základná kontrola
+    if (!recording || !lidarVis || !videoWriterLidar.isOpened()) return;
+
+    // 2. Získame obrázok widgetu
+    QPixmap pix = lidarVis->grab();
+    if (pix.isNull() || pix.width() <= 0 || pix.height() <= 0) {
+        return;
+    }
+
+    QImage img = pix.toImage().convertToFormat(QImage::Format_RGB888);
+
+    // 3. Konverzia QImage na cv::Mat
+    cv::Mat mat(img.height(), img.width(), CV_8UC3, (uchar*)img.bits(), img.bytesPerLine());
+
+    // Vytvoríme čistú kópiu pre OpenCV (BGR)
+    cv::Mat matBGR;
+    cv::cvtColor(mat, matBGR, cv::COLOR_RGB2BGR);
+
+    // 4. !!! KRITICKÁ ČASŤ !!!
+    // Musíme zmeniť veľkosť obrázka presne na to, s čím sme otvorili VideoWriter.
+    // Aj keď sa veľkosť líši len o 1 pixel, musíme spraviť resize.
+
+    if (matBGR.size() != lidarVideoSize) {
+        try {
+            cv::resize(matBGR, matBGR, lidarVideoSize);
+        } catch (...) {
+            qDebug() << "Chyba pri resize Lidaru!";
+            return;
+        }
+    }
+
+    // 5. Zápis
+    videoWriterLidar.write(matBGR);
+
+    // Debug výpis (môžeš po čase vymazať, ak to bude fungovať)
+    // static int frameCounter = 0;
+    // if (frameCounter++ % 20 == 0) qDebug() << "Zapisujem Lidar frame...";
 }

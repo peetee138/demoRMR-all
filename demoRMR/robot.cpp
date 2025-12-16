@@ -64,8 +64,8 @@ int robot::processThisRobot(TKobukiData robotdata)
 
     ///tu mozete robit s datami z robota
     double bateria = ((double)robotdata.Battery)/255*100;
-    bateria = 82.5;
-    qDebug()<<"batria: "<<bateria;
+    //bateria = 82.5;
+    //qDebug()<<"batria: "<<bateria;
 
     emit publishBattery(bateria);
 
