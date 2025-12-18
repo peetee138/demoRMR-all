@@ -41,6 +41,7 @@ public:
     // Funkcia na vratenie vsetkych bodov (ak by si ich chcel poslat robotovi)
     std::vector<MapPoint> getPoints() const { return points; }
 
+    void setDetectedBall(bool detected, int gridX = 0, int gridY = 0);
 
     bool pozorStena;
     // Funkcia na vycistenie vsetkych bodov
@@ -56,6 +57,10 @@ protected:
 
 private:
     robot* _robot;
+    bool m_ballDetected;
+    int m_ballGridX;
+    int m_ballGridY;
+
     LaserMeasurement copyOfLaserData;
     bool hasData;
     bool drawPath = false; // Premenná, či kresliť čiary (na začiatku false)

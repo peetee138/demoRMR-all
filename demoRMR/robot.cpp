@@ -4,6 +4,7 @@ robot::robot(QObject *parent) : QObject(parent)
 {
     startLoging=false;
     qRegisterMetaType<LaserMeasurement>("LaserMeasurement");
+    qRegisterMetaType<std::vector<double>>("std::vector<double>");
 #ifndef DISABLE_OPENCV
     qRegisterMetaType<cv::Mat>("cv::Mat");
 #endif
@@ -131,7 +132,7 @@ int robot::processThisAMCLPosition(float x, float y, float theta)
 int robot::processThisLidar(LaserMeasurement laserData)
 {
 
-    if(startLoging==true)
+    /*if(startLoging==true)
     {
         std::ofstream robotlog;
         robotlog.open("laser.log",std::ios::app);
@@ -148,6 +149,39 @@ int robot::processThisLidar(LaserMeasurement laserData)
     emit publishLidar(copyOfLaserData);
     // update();//tento prikaz prinuti prekreslit obrazovku.. zavola sa paintEvent funkcia
 
+
+    return 0;*/
+    memcpy(&copyOfLaserData, &laserData, sizeof(LaserMeasurement));
+    emit publishLidar(copyOfLaserData);
+
+    // --- FÚZIA: Extrakcia bodov pre kameru ---
+    prekazkyVpredu_uhol.clear();
+    prekazkyVpredu_vzdialenost.clear();
+
+    for (int i = 0; i < laserData.numberOfScans; i++) {
+        // Prevod uhla (zalezi od LIDARu, toto je logika z tvojho druheho programu)
+        double povodnyUhol = laserData.Data[i].scanAngle;
+        double uhol_lid = -povodnyUhol; // Negacia
+
+        // Normalizacia do rozsahu 0-360 ak treba, alebo ponechanie pre logiku
+        if (uhol_lid < 0.0) {
+            uhol_lid += 180.0; // Toto bolo v tvojom demo programe, skontroluj ci sedi na tvoj robot
+        }
+
+        // Logika z druheho programu: Berieme uhly, ktore su "vpredu"
+        // (Uprav intervaly podla realneho natocenia lidaru voci kamere)
+        // V demo programe to bolo: <-146, -190> U <146, 180>
+        // Alebo jednoduchsie: uhol okolo 0 (ak je lidar vpredu) alebo okolo 180 (ak je vzadu)
+
+        // POUŽIJEME LOGIKU Z TVOJHO DEMO KÓDU:
+        if ((uhol_lid <= -146.0 && uhol_lid >= -190.0) || (uhol_lid >= 146.0 && uhol_lid <= 180.0)) {
+            prekazkyVpredu_uhol.push_back(uhol_lid);
+            prekazkyVpredu_vzdialenost.push_back(laserData.Data[i].scanDistance);
+        }
+    }
+
+    // Posleme data do MainWindow
+    emit publishFrontLidarPoints(prekazkyVpredu_uhol, prekazkyVpredu_vzdialenost);
 
     return 0;
 

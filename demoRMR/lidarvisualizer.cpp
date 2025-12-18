@@ -19,6 +19,9 @@ LidarVisualizer::LidarVisualizer(QWidget *parent) : QWidget(parent)
     pal.setColor(QPalette::Window, Qt::black);
     this->setAutoFillBackground(true);
     this->setPalette(pal);
+    m_ballDetected = false;
+    m_ballGridX = 0;
+    m_ballGridY = 0;
 }
 
 void LidarVisualizer::toggleWallHighlight(bool enable)
@@ -193,6 +196,19 @@ void LidarVisualizer::paintEvent(QPaintEvent *event)
             QRectF cellRect(mapRect.x() + c * cellWidth, mapRect.y() + r * cellHeight, cellWidth, cellHeight);
             painter.drawRect(cellRect);
         }
+    }
+
+    // --- VYKRESLENIE LOPTY ---
+    if (m_ballDetected) {
+        double cellWidth  = static_cast<double>(mapRect.width()) / cols;
+        double cellHeight = static_cast<double>(mapRect.height()) / rows;
+
+        double ballScreenX = mapRect.x() + m_ballGridX * cellWidth + cellWidth / 2.0;
+        double ballScreenY = mapRect.y() + m_ballGridY * cellHeight + cellHeight / 2.0;
+
+        painter.setBrush(QColor(255, 165, 0)); // Oranžová
+        painter.setPen(Qt::white);
+        painter.drawEllipse(QPointF(ballScreenX, ballScreenY), 8, 8);
     }
 
     // --- 2. Kreslenie bodov ---
@@ -415,4 +431,11 @@ void LidarVisualizer::togglePathDrawing(bool enable)
     pozorStena = false;
 
     update(); // Prekresliť
+}
+void LidarVisualizer::setDetectedBall(bool detected, int gridX, int gridY)
+{
+    m_ballDetected = detected;
+    m_ballGridX = gridX;
+    m_ballGridY = gridY;
+    update();
 }

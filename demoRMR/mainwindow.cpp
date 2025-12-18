@@ -9,6 +9,7 @@
 #include <QHeaderView>
 #include "errordialog.h"
 #include "wallerrordialog.h"
+#include "replaydialog.h"
 
 MainWindow::MainWindow(QWidget *parent) :
     QMainWindow(parent),
@@ -285,11 +286,15 @@ void MainWindow::setUiAMCLValues(double robotX, double robotY, double robotFi)
 {
     ui->lineEdit_2->setText("X = " + QString::number(robotX/100));
     ui->lineEdit_3->setText("Y = " + QString::number(robotY/100));
-    ui->lineEdit_4->setText("Fi = " + QString::number(robotFi));
+    double normalizedFi = std::fmod(robotFi, 2.0 * M_PI);
+    if (normalizedFi > M_PI) normalizedFi -= 2.0 * M_PI;
+    if (normalizedFi <= -M_PI) normalizedFi += 2.0 * M_PI;
+    ui->lineEdit_4->setText("Fi = " + QString::number(normalizedFi));
 
     robot_X = robotX;
     robot_Y = robotY;
-    robot_Fi = robotFi;
+    robot_Fi = normalizedFi;
+    qDebug()<<"uhol robota: "<<robot_Fi;
 
 }
 #endif
@@ -298,7 +303,7 @@ void MainWindow::on_pushButton_9_clicked() // START
 {
     QString zadany_text = ui->lineEdit->text();
     if (zadany_text.isEmpty()){
-        this->ipaddress = "127.0.0.1";
+        this->ipaddress = "192.168.1.14";
     } else {
         this->ipaddress = zadany_text.toStdString();
     }
@@ -315,6 +320,8 @@ void MainWindow::on_pushButton_9_clicked() // START
 #ifndef DISABLE_AMCL
     connect(&_robot,SIGNAL(publishAMCLPosition(double,double,double)),this,SLOT(setUiAMCLValues(double,double,double)));
 #endif
+
+    connect(&_robot, SIGNAL(publishFrontLidarPoints(std::vector<double>, std::vector<double>)), this, SLOT(receiveFrontLidarPoints(std::vector<double>, std::vector<double>)));
 
     _robot.initAndStartRobot(ipaddress);
 
@@ -361,71 +368,191 @@ int MainWindow::paintThisLidar(const LaserMeasurement &laserData)
 // --- ZOBRAZENIE KAMERY DO QLABEL ---
 int MainWindow::paintThisCamera(const cv::Mat &cameraData)
 {
-    // OCHRANA: Ak sú dáta prázdne, nerob nič
+    // 1. OCHRANA
     if (cameraData.empty() || cameraData.cols <= 0 || cameraData.rows <= 0) return 0;
 
+    // 2. NORMALIZÁCIA OBRAZU
     cv::Mat frameCopy;
-    cameraData.copyTo(frameCopy);
+    if (cameraData.channels() == 4) cv::cvtColor(cameraData, frameCopy, cv::COLOR_BGRA2BGR);
+    else if (cameraData.channels() == 1) cv::cvtColor(cameraData, frameCopy, cv::COLOR_GRAY2BGR);
+    else cameraData.copyTo(frameCopy);
+
     frameCopy.copyTo(frame[(actIndex+1)%3]);
     actIndex = (actIndex+1)%3;
 
-    // --- 1. VYNÚTENIE POMERU 16:9 ---
+    // 3. RESIZE
     cv::resize(frameCopy, frameCopy, cv::Size(640, 360));
 
-    // --- 2. Zobrazenie ---
+    // 4. PRÍPRAVA NA KRESLENIE
     cv::Mat rgbFrame;
     cv::cvtColor(frameCopy, rgbFrame, cv::COLOR_BGR2RGB);
-    QImage qimg((uchar*)rgbFrame.data, rgbFrame.cols, rgbFrame.rows, rgbFrame.step, QImage::Format_RGB888);
 
-    if(cameraLabel) {
-        QPixmap pix = QPixmap::fromImage(qimg);
-        QPixmap scaledPix = pix.scaled(cameraLabel->size(), Qt::KeepAspectRatio, Qt::SmoothTransformation);
-        cameraLabel->setPixmap(scaledPix);
+    QImage qimg((uchar*)rgbFrame.data, rgbFrame.cols, rgbFrame.rows, rgbFrame.step, QImage::Format_RGB888);
+    QImage drawingImage = qimg.copy();
+    QPainter painter(&drawingImage);
+
+    // --- 5. DETEKCIA LOPTY ---
+    float ballRadius = 0;
+    cv::Point ballCenter;
+    bool ballFound = false;
+
+    if (!photoTaken) {
+        ballFound = detectBall(frameCopy, ballRadius, ballCenter);
     }
 
-    // --- 3. Nahrávanie videa ---
+    // Premenné na nájdenie najlepšieho bodu
+    double bestLidarDistance = -1.0;
+    double minDiffX = 10000.0; // Inicializujeme na veľké číslo
+
+    // --- 6. FÚZIA LIDARU A KAMERY ---
+    double width_I = 640.0;
+    double height_I = 360.0;
+    double f = 934.962;
+    double Z = -210;
+    double Z_D = -145;
+    double Y_D = -115;
+    double f_new = f * (width_I / 960.0);
+
+    //double bestLidarDistance = -1.0;
+    double minDistanceFound = 100000.0; // Inicializujeme na velke cislo
+
+    for (size_t var = 0; var < uhol_update.size(); var++) {
+        double dist = vzdialenost_update[var];
+        if(dist <= 0) continue;
+
+        double uhol_rad = uhol_update[var] * (M_PI/180.0);
+        double sinus = std::sin(uhol_rad);
+        double cosinus = std::cos(uhol_rad);
+
+        // Projekcia bodu na obrazovku
+        double X_obr = width_I / 2.0 - (f_new * (dist * sinus)) / (dist * cosinus + Z_D);
+        double Y_obr = height_I / 2.0 + (f_new * (-Z + Y_D)) / (dist * cosinus + Z_D);
+
+        if(X_obr >= 0 && X_obr < width_I && Y_obr >= 0 && Y_obr < height_I) {
+
+            // Základné vykreslenie bodu (červená/modrá)
+            QColor color;
+            int kanalAlfa = static_cast<int>((250.0 / dist) * 255);
+            if (kanalAlfa > 255) kanalAlfa = 255; if (kanalAlfa < 50) kanalAlfa = 50;
+
+            if (dist > 185 && dist <= 350) {
+                painter.setBrush(QColor(255, 0, 0, 255)); painter.setPen(Qt::NoPen);
+                painter.drawRect(QRectF(X_obr - 5, Y_obr - 5, 10, 10));
+            } else if (dist > 350) {
+                painter.setBrush(QColor(0, 0, 255, kanalAlfa)); painter.setPen(Qt::NoPen);
+                painter.drawEllipse(QPointF(X_obr, Y_obr), 3, 3);
+            } else {
+                painter.setBrush(QColor(0, 0, 0, 255)); painter.setPen(Qt::NoPen);
+                painter.drawEllipse(QPointF(X_obr, Y_obr), 3, 3);
+            }
+
+            // --- HĽADANIE NAJBLIŽŠIEHO BODU K LOPTE (Iba X os) ---
+            if (ballFound) {
+                // Sme v rámci šírky lopty?
+                if (std::abs(X_obr - ballCenter.x) < ballRadius) {
+
+                    painter.setBrush(Qt::green);
+                    painter.drawEllipse(QPointF(X_obr, Y_obr), 6, 6);
+
+                    // Ak je tento bod BLIŽŠIE než tie, čo sme našli doteraz, berieme ho!
+                    // Tým pádom ignorujeme stenu (3500mm) a vezmeme loptu (napr. 500mm)
+                    if (dist < minDistanceFound) {
+                        minDistanceFound = dist;
+                        bestLidarDistance = dist;
+                    }
+                }
+            }
+        }
+    }
+    painter.end();
+
+    // 7. ZOBRAZENIE
+    if(cameraLabel) {
+        QPixmap pix = QPixmap::fromImage(drawingImage);
+        cameraLabel->setPixmap(pix.scaled(cameraLabel->size(), Qt::KeepAspectRatio, Qt::SmoothTransformation));
+    }
+
+    // 8. NAHRÁVANIE
     if (recording && videoWriterCamera.isOpened()) {
         videoWriterCamera.write(frameCopy);
     }
 
-    // --- 4. DETEKCIA LOPTY A ULOŽENIE FOTKY ---
-    // Kontrolujeme !photoTaken, aby sme uložili fotku a zastavili misiu iba RAZ
-    if (!photoTaken && detectBall(frameCopy)) {
+    // 9. LOGIKA UKONČENIA
+    if (ballFound) {
 
-        qDebug() << "Lopta nájdená! Začínam proces ukončenia.";
+        qDebug() << "Lopta detegovaná. Radius:" << ballRadius;
 
-        // A) Príprava cesty a názvu súboru
-        QString saveDir = "C:/Users/petri/Downloads/kamera_kobuki/Fotka/";
-        QDir dir(saveDir);
-        if (!dir.exists()) {
-            dir.mkpath("."); // Vytvorí priečinok ak neexistuje
+        // --- Získanie vzdialenosti ---
+        double distanceMm = bestLidarDistance;
+
+        // Ak lidar loptu netrafil (distance je -1 alebo 0), musíme to ošetriť,
+        // inak by podmienka < 1000 prešla (lebo -1 < 1000).
+        if (distanceMm <= 0) {
+            // Fallback na kameru ak lidar zlyhal, alebo ignorovanie
+            // distanceMm = 40000.0 / ballRadius;
+            // Alebo len nastavíme veľké číslo, aby sa to nespustilo
+            distanceMm = 9999.0;
         }
 
-        QDateTime now = QDateTime::currentDateTime();
-        QString timestamp = now.toString("yyyy_MM_dd_hh_mm_ss");
-        QString finalPhotoPath = saveDir + "fotka_lopty_" + timestamp + ".jpg";
+        if (distanceMm > 5000) distanceMm = 5000;
 
-        // B) Uloženie fotografie
-        bool saved = cv::imwrite(finalPhotoPath.toStdString(), frameCopy);
-        if(saved) {
-            qDebug() << "Fotografia úspešne uložená:" << finalPhotoPath;
-        } else {
-            qDebug() << "CHYBA: Fotografia sa nepodarila uložiť!";
+        // --- Výpočet uhla ---
+        double fovRad = 1.05;
+        double angleOffset = ((320.0 - ballCenter.x) / 320.0) * (fovRad / 2.0);
+
+        // --- Výpočet polohy na mape ---
+        double ballGlobalAngle = robot_Fi + angleOffset;
+
+        // Normalizácia výsledného uhla (-PI do +PI)
+        if (ballGlobalAngle > M_PI) ballGlobalAngle -= 2.0 * M_PI;
+        if (ballGlobalAngle <= -M_PI) ballGlobalAngle += 2.0 * M_PI;
+
+        double ballX = robot_X - distanceMm * sin(ballGlobalAngle);
+        double ballY = robot_Y - distanceMm * cos(ballGlobalAngle);
+
+        // --- Zobrazenie na mape (Vizualizácia) ---
+        // Toto necháme bežať vždy, aby si videl loptu na mape aj z diaľky
+        if (lidarVis) {
+            lidarVis->setDetectedBall(true, (int)(ballX / 100.0), (int)(ballY / 100.0));
         }
 
-        // C) Nastavenie príznaku, že už sme loptu našli
-        photoTaken = true;
+        // --- DEBUG VÝPIS ---
+        qDebug() << "Lopta dist:" << distanceMm << "mm | Uhol:" << angleOffset;
 
-        // D) Zastavenie nahrávania a robota
-        if (recording) {
-            stopRecording(); // Toto zavrie video súbory
+        // ====================================================================
+        // >>> TU JE ZMENA: KONTROLA VZDIALENOSTI (MENEJ AKO 1 METER) <<<
+        // ====================================================================
+        // Vykoná sa len ak je vzdialenosť platná (> 10mm) a menšia ako 1000mm
+        if (distanceMm > 10.0 && distanceMm < 1000.0)
+        {
+            qDebug() << "Lopta je blizko (< 1m)! Zastavujem a fotim.";
+
+            // --- Uloženie a Koniec ---
+            QString saveDir = "C:/Users/petri/Downloads/kamera_kobuki/Fotka/";
+            QDir dir(saveDir); if (!dir.exists()) dir.mkpath(".");
+            QDateTime now = QDateTime::currentDateTime();
+            QString timestamp = now.toString("yyyy_MM_dd_hh_mm_ss");
+            QString finalPhotoPath = saveDir + "fotka_lopty_" + timestamp + ".jpg";
+
+            cv::imwrite(finalPhotoPath.toStdString(), frameCopy);
+
+            photoTaken = true;
+            if (recording) stopRecording();
+            state = IDLE;
+
+            // Okamžité zastavenie
+            _robot.setSpeedVal(0, 0);
+
+            QMessageBox::information(this, "Misia Úspešná",
+                                     "Lopta nájdená a dosiahnutá!\n"
+                                     "Vzdialenosť: " + QString::number((int)distanceMm) + " mm\n"
+                                                                               "Súradnice: [" + QString::number((int)ballX) + ", " + QString::number((int)ballY) + "]");
         }
-
-        state = IDLE;             // Zastaví navigačnú slučku
-        _robot.setSpeedVal(0, 0); // Zastaví fyzicky robota
-
-        // E) Informácia pre užívateľa
-        QMessageBox::information(this, "Misia Úspešná", "Lopta bola nájdená!\nFotografia uložená.\nMisia ukončená.");
+        else {
+            // Ak je lopta ďalej ako 1m, len vypíšeme info, ale nezastavujeme
+            // Robot pokračuje v navigácii (state ostáva MOVING alebo ROTATING)
+            qDebug() << "Vidim loptu, ale je este daleko (" << distanceMm << " mm). Pokracujem.";
+        }
     }
 
     return 0;
@@ -441,38 +568,32 @@ int MainWindow::paintThisSkeleton(const skeleton &skeledata)
 }
 #endif
 
-bool MainWindow::detectBall(const cv::Mat &frame)
+/*bool MainWindow::detectBall(const cv::Mat &frame, float &outRadius, cv::Point &outCenter)
 {
+    // 1. Ochrana
+    if (frame.empty()) return false;
+
     cv::Mat hsv;
     cv::cvtColor(frame, hsv, cv::COLOR_BGR2HSV);
     cv::Mat lowerRed1, upperRed1, lowerRed2, upperRed2, redMask;
 
     cv::inRange(hsv, cv::Scalar(0, 150, 80), cv::Scalar(10, 255, 255), lowerRed1);
     cv::inRange(hsv, cv::Scalar(170, 150, 80), cv::Scalar(180, 255, 255), lowerRed2);
-
     redMask = lowerRed1 | lowerRed2;
 
-    //hough transformacia
     cv::Mat gray;
     cv::cvtColor(frame, gray, cv::COLOR_BGR2GRAY);
-    cv::GaussianBlur(gray, gray, cv::Size(5, 5),2,2);
+    cv::GaussianBlur(gray, gray, cv::Size(5, 5), 2, 2);
 
-    //detegovanie kruhov
     std::vector<cv::Vec3f> circles;
-
-    //parametre
-    // dp = 1 (rozlíšenie), minDist = frame.rows/8 (min. vzdialenosť medzi kruhmi)
-    // param1 = 100 (Canny edge threshold), param2 = 30 (Accumulator threshold - čím menšie, tým viac falošných kruhov)
-    // minRadius = 10, maxRadius = 400 (rozsah veľkosti lopty)
-    cv::HoughCircles(gray, circles, cv::HOUGH_GRADIENT, 1, gray.rows / 8, 100, 20, 25, 500);
+    // Parametre: minRadius 5, maxRadius 400
+    cv::HoughCircles(gray, circles, cv::HOUGH_GRADIENT, 1, gray.rows / 8, 100, 25, 5, 400);
 
     for (size_t i = 0; i < circles.size(); i++)
     {
         cv::Point center(cvRound(circles[i][0]), cvRound(circles[i][1]));
         int radius = cvRound(circles[i][2]);
 
-        // Vytvoríme ROI (Region of Interest) okolo kruhu
-        // Musíme dávať pozor, aby sme nevyšli z obrazu (Boundary check)
         int x = std::max(0, center.x - radius);
         int y = std::max(0, center.y - radius);
         int w = std::min(frame.cols - x, 2 * radius);
@@ -481,20 +602,343 @@ bool MainWindow::detectBall(const cv::Mat &frame)
         if (w <= 0 || h <= 0) continue;
 
         cv::Rect roiRect(x, y, w, h);
-
         cv::Mat roiMask = redMask(roiRect);
 
-        //pocet pixelov v Roi
         int redPixelCount = cv::countNonZero(roiMask);
-
         int totalPixels = w * h;
 
         if (totalPixels > 0 && (double)redPixelCount / totalPixels > 0.4)
         {
-            // Našli sme červený kruh!
-            qDebug()<<"LOPTAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA";
+            // !!! Zapíšeme vysledky do premenných !!!
+            outRadius = (float)radius;
+            outCenter = center;
             return true;
         }
+    }
+    return false;
+}*/
+/*bool MainWindow::detectBall(const cv::Mat &frame, float &outRadius, cv::Point &outCenter)
+{
+    if (frame.empty()) return false;
+
+    // 1. Prevod na HSV
+    cv::Mat hsv;
+    cv::cvtColor(frame, hsv, cv::COLOR_BGR2HSV);
+
+    // 2. Maska pre červenú farbu
+    cv::Mat lowerRed1, upperRed1, lowerRed2, upperRed2, redMask;
+    cv::inRange(hsv, cv::Scalar(0, 130, 80), cv::Scalar(10, 255, 255), lowerRed1);
+    cv::inRange(hsv, cv::Scalar(170, 130, 80), cv::Scalar(180, 255, 255), lowerRed2);
+    redMask = lowerRed1 | lowerRed2;
+
+    // 3. Odstránenie šumu (morfologické operácie)
+    // Toto spojí rozbité červené fľaky do jedného
+    cv::Mat kernel = cv::getStructuringElement(cv::MORPH_ELLIPSE, cv::Size(5, 5));
+    cv::erode(redMask, redMask, kernel);
+    cv::dilate(redMask, redMask, kernel);
+
+    // 4. Nájdenie kontúr (obrysov červených fľakov)
+    std::vector<std::vector<cv::Point>> contours;
+    cv::findContours(redMask, contours, cv::RETR_EXTERNAL, cv::CHAIN_APPROX_SIMPLE);
+
+    double maxArea = 0;
+    int maxIndex = -1;
+
+    // 5. Hľadáme najväčší červený objekt
+    for (size_t i = 0; i < contours.size(); i++) {
+        double area = cv::contourArea(contours[i]);
+
+        // Ignorujeme malé šumy (filtrovanie podľa veľkosti)
+        if (area > 500) {
+            if (area > maxArea) {
+                maxArea = area;
+                maxIndex = (int)i;
+            }
+        }
+    }
+
+    // 6. Ak sme našli veľký objekt
+    if (maxIndex != -1) {
+        // Vypočítame kruh, ktorý tento objekt obaluje
+        cv::Point2f center;
+        float radius;
+        cv::minEnclosingCircle(contours[maxIndex], center, radius);
+
+        // Zapíšeme výsledky
+        outCenter = center;
+        outRadius = radius;
+
+        // Debug výpis
+        qDebug() << "Nasiel som loptu cez KONTURY! Radius:" << radius << " Area:" << maxArea;
+
+        return true;
+    }
+
+    return false;
+}
+*/
+/*bool MainWindow::detectBall(const cv::Mat &frame, float &outRadius, cv::Point &outCenter)
+{
+    if (frame.empty()) return false;
+
+    // 1. Prevod na HSV
+    cv::Mat hsv;
+    cv::cvtColor(frame, hsv, cv::COLOR_BGR2HSV);
+
+    // 2. Maska pre červenú farbu
+    // Rozsahy ostavaju rovnake
+    cv::Mat lowerRed1, upperRed1, lowerRed2, upperRed2, redMask;
+    cv::inRange(hsv, cv::Scalar(0, 130, 80), cv::Scalar(10, 255, 255), lowerRed1);
+    cv::inRange(hsv, cv::Scalar(170, 130, 80), cv::Scalar(180, 255, 255), lowerRed2);
+    redMask = lowerRed1 | lowerRed2;
+
+    // 3. Odstránenie šumu
+    // Dôležité: Nepreháňať to s dilatáciou, aby sa z kríža nestala machuľa
+    cv::Mat kernel = cv::getStructuringElement(cv::MORPH_ELLIPSE, cv::Size(5, 5));
+    cv::erode(redMask, redMask, kernel);
+    cv::dilate(redMask, redMask, kernel);
+
+    // 4. Nájdenie kontúr
+    std::vector<std::vector<cv::Point>> contours;
+    cv::findContours(redMask, contours, cv::RETR_EXTERNAL, cv::CHAIN_APPROX_SIMPLE);
+
+    double maxArea = 0;
+    int bestIndex = -1;
+    float bestRadius = 0;
+    cv::Point2f bestCenter;
+
+    // 5. Prechádzame všetky kontúry a hľadáme tú, ktorá je červená A ZÁROVEŇ guľatá
+    for (size_t i = 0; i < contours.size(); i++) {
+        double area = cv::contourArea(contours[i]);
+
+        // Ignorujeme malé šumy
+        if (area < 600) continue;
+
+        // --- NOVÁ KONTROLA TVARU ---
+
+        // A) Vypočítame obvod
+        double perimeter = cv::arcLength(contours[i], true);
+        if (perimeter == 0) continue;
+
+        // B) Vypočítame "Cirkularitu" (Kruhovitosť)
+        // Vzorec: 4 * PI * Area / (Perimeter^2)
+        // Perfektný kruh má hodnotu 1.0. Štvorec cca 0.78.
+        // Kríž (dlhé tenké čiary) bude mať veľmi nízku hodnotu (napr. 0.2 - 0.4).
+        double circularity = (4 * M_PI * area) / (perimeter * perimeter);
+
+        // C) Vypočítame "Plnosť" (Solidity) voči opísanej kružnici
+        cv::Point2f center;
+        float radius;
+        cv::minEnclosingCircle(contours[i], center, radius);
+        double circleArea = M_PI * radius * radius;
+
+        // Pomer plochy objektu k ploche kruhu, v ktorom sa nachádza.
+        // Lopta vyplní kruh takmer celý (cca 0.8 - 0.9).
+        // Kríž vyplní len malú časť kruhu (má veľa prázdneho miesta okolo ramien).
+        double solidity = area / circleArea;
+
+        // --- DEBUG VÝPIS (aby si videl hodnoty v konzole) ---
+        // Ak ti to nenájde loptu, pozri si v konzole, aké má hodnoty a uprav podmienku nižšie
+        // qDebug() << "Objekt" << i << "Area:" << area << "Circularity:" << circularity << "Solidity:" << solidity;
+
+        // D) Podmienka pre LOPTU
+        // Cirkularita > 0.6 (aby sme vylúčili čiari a kríže)
+        // Solidity > 0.6 (aby sme vylúčili prstence alebo C-tvary)
+        qDebug()<<"CIRC: "<< circularity << "Solid: " << solidity;
+        if (circularity > 0.1 && solidity > 0.3) {
+
+            // Hľadáme najväčšiu loptu (ak by ich bolo viac)
+            if (area > maxArea) {
+                maxArea = area;
+                bestIndex = (int)i;
+                bestCenter = center;
+                bestRadius = radius;
+            }
+        }
+    }
+
+    // 6. Ak sme našli vyhovujúci objekt
+    if (bestIndex != -1) {
+        outCenter = bestCenter;
+        outRadius = bestRadius;
+
+        qDebug() << "Lopta najdena! Area:" << maxArea << "Radius:" << bestRadius;
+        return true;
+    }
+
+    return false;
+}*/
+
+/*bool MainWindow::detectBall(const cv::Mat &frame, float &outRadius, cv::Point &outCenter)
+{
+    if (frame.empty()) return false;
+
+    // 1. Príprava pre Hough (Grayscale + Blur)
+    cv::Mat gray;
+    cv::cvtColor(frame, gray, cv::COLOR_BGR2GRAY);
+    // MedianBlur je najlepší pre Hough, zachová hrany ale odstráni šum
+    cv::medianBlur(gray, gray, 5);
+
+    // 2. Príprava pre kontrolu farby (HSV Maska)
+    cv::Mat hsv, redMask;
+    cv::cvtColor(frame, hsv, cv::COLOR_BGR2HSV);
+    cv::Mat lowerRed1, upperRed1, lowerRed2, upperRed2;
+    cv::inRange(hsv, cv::Scalar(0, 130, 80), cv::Scalar(10, 255, 255), lowerRed1);
+    cv::inRange(hsv, cv::Scalar(170, 130, 80), cv::Scalar(180, 255, 255), lowerRed2);
+    redMask = lowerRed1 | lowerRed2;
+    // Jemne vycistime masku
+    cv::dilate(redMask, redMask, cv::getStructuringElement(cv::MORPH_ELLIPSE, cv::Size(5, 5)));
+
+    // 3. Hough Circles
+    std::vector<cv::Vec3f> circles;
+    // Parametre si možno budeš musieť doladiť:
+    // param1 (100) = Canny threshold (hrany)
+    // param2 (30)  = Accumulator threshold (nižšie číslo = viac kruhov, aj falošných)
+    // minRadius, maxRadius = nastav podľa vzdialenosti robota
+    cv::HoughCircles(gray, circles, cv::HOUGH_GRADIENT, 1, gray.rows/8, 100, 25, 10, 400);
+
+    float bestRadius = 0;
+    cv::Point bestCenter;
+    bool found = false;
+
+    // 4. VALIDÁCIA: Je ten kruh červený?
+    for(size_t i = 0; i < circles.size(); i++)
+    {
+        cv::Point center(cvRound(circles[i][0]), cvRound(circles[i][1]));
+        int radius = cvRound(circles[i][2]);
+
+        // Vytvoríme ROI (výrez) okolo kruhu, aby sme neprechádzali celý obrázok
+        // Ošetríme hranice obrazu
+        int x = std::max(0, center.x - radius);
+        int y = std::max(0, center.y - radius);
+        int w = std::min(frame.cols - x, 2 * radius);
+        int h = std::min(frame.rows - y, 2 * radius);
+
+        if (w <= 0 || h <= 0) continue;
+
+        cv::Rect roi(x, y, w, h);
+        cv::Mat maskROI = redMask(roi);
+
+        // Spočítame, koľko pixelov v tomto výreze je červených
+        int redPixels = cv::countNonZero(maskROI);
+        int totalPixels = w * h;
+
+        // Ak je aspoň 40% plochy štvorca okolo kruhu červených, je to lopta.
+        // (Kruh zaberá cca 78% štvorca, ak je lopta fľakatá, 40% je safe hranica)
+        double ratio = (double)redPixels / totalPixels;
+
+        if (ratio > 0.4)
+        {
+            // Našli sme červený kruh!
+            // Ak nájdeme viac, berieme ten najväčší alebo najbližší
+            if (radius > bestRadius) {
+                bestRadius = (float)radius;
+                bestCenter = center;
+                found = true;
+            }
+        }
+    }
+
+    if (found) {
+        outRadius = bestRadius;
+        outCenter = bestCenter;
+        qDebug() << "Hough nasiel cervenu loptu! Radius:" << bestRadius;
+        return true;
+    }
+
+    return false;
+}*/
+
+bool MainWindow::detectBall(const cv::Mat &frame, float &outRadius, cv::Point &outCenter)
+{
+    if (frame.empty()) return false;
+
+    // 1. Blur na odstránenie šumu a vyhladenie fľakov
+    // Používame GaussianBlur, ktorý trochu rozmaže hrany fľakov
+    cv::Mat blurred;
+    cv::GaussianBlur(frame, blurred, cv::Size(9, 9), 2, 2);
+
+    // 2. Prevod na HSV
+    cv::Mat hsv;
+    cv::cvtColor(blurred, hsv, cv::COLOR_BGR2HSV);
+
+    // 3. Maska pre červenú farbu
+    // Rozšíril som trochu dolné hranice (S=100, V=60), aby to chytilo aj tmavšie časti lopty v tieni
+    cv::Mat lowerRed1, upperRed1, lowerRed2, upperRed2, redMask;
+    cv::inRange(hsv, cv::Scalar(0, 100, 60), cv::Scalar(10, 255, 255), lowerRed1);
+    cv::inRange(hsv, cv::Scalar(160, 100, 60), cv::Scalar(180, 255, 255), lowerRed2);
+    redMask = lowerRed1 | lowerRed2;
+
+    // 4. Morfológia - CLOSE spojí diery vnútri objektu
+    // Toto je dôležité pre fľakatú loptu - "zaleje" diery
+    cv::Mat kernel = cv::getStructuringElement(cv::MORPH_ELLIPSE, cv::Size(7, 7));
+    cv::morphologyEx(redMask, redMask, cv::MORPH_CLOSE, kernel);
+
+    // 5. Nájdenie kontúr
+    std::vector<std::vector<cv::Point>> contours;
+    cv::findContours(redMask, contours, cv::RETR_EXTERNAL, cv::CHAIN_APPROX_SIMPLE);
+
+    double maxArea = 0;
+    int bestIndex = -1;
+    float bestRadius = 0;
+    cv::Point2f bestCenter;
+
+    for (size_t i = 0; i < contours.size(); i++) {
+        // Zoberieme plochu surovej kontúry (môže byť deravá kvôli fľakom)
+        double rawArea = cv::contourArea(contours[i]);
+
+        // Ignorujeme malé šumy
+        if (rawArea < 500) continue;
+
+        // --- KĽÚČOVÁ ČASŤ: CONVEX HULL (Obalová krivka) ---
+        // Obalíme kontúru "gumičkou", čím ignorujeme preliačiny a fľaky
+        std::vector<cv::Point> hull;
+        cv::convexHull(contours[i], hull);
+
+        double hullArea = cv::contourArea(hull);
+        double hullPerimeter = cv::arcLength(hull, true);
+
+        if (hullPerimeter == 0) continue;
+
+        // Výpočet kruhovitosti na základe OBALU, nie deravej kontúry
+        // Perfektný kruh = 1.0
+        double hullCircularity = (4 * M_PI * hullArea) / (hullPerimeter * hullPerimeter);
+
+        // Debug výpis (ak potrebuješ vidieť hodnoty)
+        // qDebug() << "Objekt" << i << "HullCircularity:" << hullCircularity << "HullArea:" << hullArea;
+
+        // --- FILTROVANIE ---
+        // Lopta (aj fľakatá) bude mať HullCircularity blízko 1.0 (určite nad 0.75)
+        // Kríž alebo čiara bude mať výrazne menej (pod 0.5), pretože majú veľký obvod a malú plochu
+        if (hullCircularity > 0.75) {
+
+            // Pre istotu skontrolujeme, či tento obal vypĺňa kružnicu (Solidity)
+            cv::Point2f center;
+            float radius;
+            cv::minEnclosingCircle(hull, center, radius);
+
+            double circleArea = M_PI * radius * radius;
+            double fillRatio = hullArea / circleArea;
+
+            // Lopta vyplní opísanú kružnicu aspoň na 70%
+            if (fillRatio > 0.7) {
+                // Berieme najväčší takýto objekt
+                if (hullArea > maxArea) {
+                    maxArea = hullArea;
+                    bestIndex = (int)i;
+                    bestCenter = center;
+                    bestRadius = radius;
+                }
+            }
+        }
+    }
+
+    if (bestIndex != -1) {
+        outCenter = bestCenter;
+        outRadius = bestRadius;
+
+        // qDebug() << "Nasiel som loptu (Convex Hull)! Radius:" << bestRadius << "Area:" << maxArea;
+        return true;
     }
 
     return false;
@@ -615,8 +1059,8 @@ void MainWindow::navigationLoop()
         }
 
         if (current_linear_speed < 0) current_linear_speed = 0;
-        if (angular_speed > 3.1415/4) angular_speed = 3.1415/4;
-        if (angular_speed < -3.1415/4) angular_speed = -3.1415/4;
+        if (angular_speed > 3.1415/8) angular_speed = 3.1415/8;
+        if (angular_speed < -3.1415/8) angular_speed = -3.1415/8;
 
         _robot.setSpeedVal(current_linear_speed, angular_speed);
     }
@@ -659,6 +1103,7 @@ void MainWindow::navigationLoop()
         } else {
             _robot.setSpeedVal(0, 0.5);
         }
+
     }
 }
 
@@ -935,4 +1380,103 @@ void MainWindow::recordLidarFrame()
     // Debug výpis (môžeš po čase vymazať, ak to bude fungovať)
     // static int frameCounter = 0;
     // if (frameCounter++ % 20 == 0) qDebug() << "Zapisujem Lidar frame...";
+}
+
+void MainWindow::receiveFrontLidarPoints(const std::vector<double> &uhol, const std::vector<double> &vzdialenost)
+{
+    this->uhol_update = uhol;
+    this->vzdialenost_update = vzdialenost;
+}
+
+/*double MainWindow::getDistanceToBall(double targetAngleRad)
+{
+    // Tolerancia +/- 5 stupňov (v radiánoch cca 0.08)
+    const double ANGLE_TOLERANCE = 10.0 * (M_PI / 180.0);
+
+    double minDistance = 10000.0; // Inicializujeme na "nekonečno"
+    bool found = false;
+
+    // Prejdeme všetky body z posledného scanu lidaru
+    for (int i = 0; i < copyOfLaserData.numberOfScans; i++)
+    {
+        double dist = copyOfLaserData.Data[i].scanDistance;
+        double angleDeg = copyOfLaserData.Data[i].scanAngle; // Uhol v stupňoch (0..360)
+
+        // Ignorujeme chybné merania (príliš blízko alebo ďaleko)
+        if (dist < 200  || dist > 6000) continue;
+
+        // Prevod uhla Lidaru na systém kamery (-PI až +PI, kde 0 je vpredu)
+        // Predpokladáme, že Lidar má 0 vpredu. Ak má 0 vzadu, treba pridať 180°.
+        // V robot.cpp si mal logiku s negáciou, tu použijeme štandardnú normalizáciu:
+
+        double lidarAngleRad = angleDeg * (M_PI / 180.0);
+
+        // Normalizácia na rozsah [-PI, PI]
+        while (lidarAngleRad > M_PI) lidarAngleRad -= 2.0 * M_PI;
+        while (lidarAngleRad < -M_PI) lidarAngleRad += 2.0 * M_PI;
+
+        // Pozor: Kamera má (Vľavo +, Vpravo -). Lidar to môže mať naopak.
+        // Ak ti to nebude merať presne, skús odkomentovať tento riadok:
+        // lidarAngleRad = -lidarAngleRad;
+
+        // Ak je tento bod v smere lopty (v rámci tolerancie)
+        if (fabs(lidarAngleRad - targetAngleRad) < ANGLE_TOLERANCE) {
+            // Hľadáme najbližší bod v tomto výseku (lebo lopta je prekážka vpredu)
+            if (dist < minDistance) {
+                minDistance = dist;
+                found = true;
+            }
+        }
+    }
+
+    if (found) return minDistance;
+    return -1.0; // Lidar v danom smere nič nevidel (alebo je lopta príliš nízko)
+}*/
+double MainWindow::getDistanceToBall(double targetAngleRad)
+{
+    // Konvertujeme uhel z kamery (radiany) na stupne, lebo uhol_update je v stupnoch
+    double targetAngleDeg = targetAngleRad * (180.0 / M_PI);
+
+    double minDiff = 1000.0;
+    double bestDistance = -1.0;
+
+    // Prechádzame len tie body, ktoré sa vykresľujú do kamery (tie modré)
+    // Tieto sú už správne otočené a vyfiltrované v robot.cpp
+    for (size_t i = 0; i < uhol_update.size(); i++) {
+
+        double currentAngle = uhol_update[i];
+        double currentDist = vzdialenost_update[i];
+
+        if (currentDist <= 0) continue;
+
+        // Hľadáme bod, ktorý má uhol najbližšie k uhlu lopty
+        double diff = std::abs(currentAngle - targetAngleDeg);
+
+        if (diff < minDiff) {
+            minDiff = diff;
+            bestDistance = currentDist;
+        }
+    }
+
+    // Ak sme našli bod, ktorý je uhlovo blízko (napr. do 5 stupňov od stredu lopty)
+    if (minDiff < 10.0) {
+        return bestDistance;
+    }
+
+    return -1.0; // Nenašli sme žiadny lidar bod v smere lopty
+}
+
+void MainWindow::on_pushButton_11_clicked()
+{
+    // Zastavíme robota a logiku navigácie, ak náhodou beží,
+    // aby nám to nerobilo šarapatu počas pozerania replayu
+    if (state != IDLE) {
+        state = IDLE;
+        _robot.setSpeedVal(0,0);
+        navTimer->stop();
+    }
+
+    // Vytvoríme a zobrazíme dialóg
+    ReplayDialog dlg(this);
+    dlg.exec(); // Modálne okno - hlavné okno bude blokované kým sa replay nezavrie
 }

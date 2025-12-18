@@ -34,6 +34,7 @@ public:
     //tato funkcia fyzicky posiela hodnoty do robota
     void setSpeed(double forw,double rots);
 signals:
+    void publishFrontLidarPoints(const std::vector<double> &uhol, const std::vector<double> &vzdialenost);
     void publishBattery(double bateria);
     void publishPosition(double x, double y, double z);
     void publishAMCLPosition(double x, double y, double z);
@@ -45,7 +46,8 @@ signals:
 void publishSkeleton(const skeleton &skeledata);
 #endif
 private:
-
+    std::vector<double> prekazkyVpredu_uhol;
+    std::vector<double> prekazkyVpredu_vzdialenost;
     /// toto su vase premenne na vasu odometriu
     double x;
     double y;

@@ -57,8 +57,10 @@ public:
 #endif
     explicit MainWindow(QWidget *parent = 0);
     ~MainWindow();
+public slots:
+    void receiveFrontLidarPoints(const std::vector<double> &uhol, const std::vector<double> &vzdialenost);
 
-   private slots:
+private slots:
     void on_pushButton_clicked();
     void on_pushButton_2_clicked();
     void on_pushButton_3_clicked();
@@ -69,7 +71,7 @@ public:
     void on_pushButton_8_clicked();
     void on_pushButton_9_clicked();
     void on_pushButton_10_clicked();
-
+    void on_pushButton_11_clicked();
     void on_pushButton_12_clicked();
     void on_pushButton_13_clicked();
 
@@ -89,6 +91,7 @@ public:
     void navigationLoop(); // Slot, ktorý sa bude volať každých 50ms
 
     int paintThisLidar(const LaserMeasurement &laserData);
+
 #ifndef DISABLE_OPENCV
     int paintThisCamera(const cv::Mat &cameraData);
 #endif
@@ -105,6 +108,11 @@ protected:
 
 
 private:
+    double getDistanceToBall(double angleRad);
+
+    std::vector<double> uhol_update;
+    std::vector<double> vzdialenost_update;
+
     // --- NAHRÁVANIE ---
     cv::VideoWriter videoWriterCamera; // Premenoval som pre prehľadnosť
     cv::VideoWriter videoWriterLidar;  // Nový writer pre lidar
@@ -149,7 +157,7 @@ private:
 
     bool photoTaken = false;    // fotka sa uloží iba raz
 
-    bool detectBall(const cv::Mat &frame);
+    bool detectBall(const cv::Mat &frame, float &outRadius, cv::Point &outCenter);
 
 
     double robot_X;
