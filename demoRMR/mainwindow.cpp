@@ -32,6 +32,8 @@ MainWindow::MainWindow(QWidget *parent) :
     lidarRecordTimer = new QTimer(this);
     connect(lidarRecordTimer, &QTimer::timeout, this, &MainWindow::recordLidarFrame);
 
+    connect(lidarRecordTimer, &QTimer::timeout, this, &MainWindow::recordStatsFrame);
+
     connect(lidarVis, &LidarVisualizer::collisionDetected, this, &MainWindow::showCollisionError);
 
     // Kamera (QLabel namiesto paintEvent)
@@ -54,6 +56,34 @@ MainWindow::MainWindow(QWidget *parent) :
     // 3. Pridáme ho do layoutu
     ui->widget_2->layout()->addWidget(batteryVis);
 
+    // 1. Skontrolujeme/vytvoríme layout pre widget_3
+    if (ui->widget_3->layout() == nullptr) {
+        QVBoxLayout *layout = new QVBoxLayout(ui->widget_3);
+        ui->widget_3->setLayout(layout);
+    }
+
+    // 2. Vytvoríme font (voliteľné, pre lepšiu čitateľnosť)
+    QFont font("Arial", 10, QFont::Bold);
+
+    // 3. Inicializácia Labelov
+    labelX = new QLabel("X: 0.00 m", this);
+    labelY = new QLabel("Y: 0.00 m", this);
+    labelFi = new QLabel("Fi: 0.00 rad", this);
+
+    // 4. Nastavenie vzhľadu
+    labelX->setFont(font);
+    labelY->setFont(font);
+    labelFi->setFont(font);
+
+    // Zarovnanie (napr. na stred)
+    labelX->setAlignment(Qt::AlignCenter);
+    labelY->setAlignment(Qt::AlignCenter);
+    labelFi->setAlignment(Qt::AlignCenter);
+
+    // 5. Pridanie do layoutu widgetu_3
+    ui->widget_3->layout()->addWidget(labelX);
+    ui->widget_3->layout()->addWidget(labelY);
+    ui->widget_3->layout()->addWidget(labelFi);
 
     // A) VELKY STACK (stackedWidget)
     // Stranka "lidar"
@@ -161,7 +191,7 @@ void MainWindow::on_pushButton_clicked()
         ui->stackedWidget->setCurrentWidget(ui->lidar);
         if(ui->stackedWidget_2) ui->stackedWidget_2->setCurrentWidget(ui->smallCamera);
 
-        ui->pushButton->setText("Swap: Cam->Big");
+        ui->pushButton->setIcon(QIcon(":/ikonky/laser.png"));
     }
     else
     {
@@ -177,7 +207,7 @@ void MainWindow::on_pushButton_clicked()
         ui->stackedWidget->setCurrentWidget(ui->camera);
         if(ui->stackedWidget_2) ui->stackedWidget_2->setCurrentWidget(ui->smallLidar);
 
-        ui->pushButton->setText("Swap: Lidar->Big");
+        ui->pushButton->setIcon(QIcon(":/ikonky/camera.png"));
     }
 
     // Prekreslenie pre istotu
@@ -270,11 +300,7 @@ void MainWindow::on_pushButton_8_clicked()
         lidarVis->togglePathDrawing(true);
     }
 }
-// Tento slot bol predtym pre tlacitko 8, mozes ho nechat alebo zmazat
-void MainWindow::on_pushButton_12_clicked()
-{
-    on_pushButton_clicked(); // Pre istotu ho presmerujem na nas novy swap
-}
+
 
 // paintEvent UZ NIE JE POTREBNY - VYMAZANY (alebo zakomentovany)
 // void MainWindow::paintEvent(QPaintEvent *event) { ... }
@@ -284,17 +310,21 @@ void MainWindow::setUiValues(double robotX,double robotY,double robotFi) {}
 #ifndef DISABLE_AMCL
 void MainWindow::setUiAMCLValues(double robotX, double robotY, double robotFi)
 {
-    ui->lineEdit_2->setText("X = " + QString::number(robotX/100));
-    ui->lineEdit_3->setText("Y = " + QString::number(robotY/100));
+    //ui->lineEdit_2->setText("X = " + QString::number(robotX/100));
+    //ui->lineEdit_3->setText("Y = " + QString::number(robotY/100));
     double normalizedFi = std::fmod(robotFi, 2.0 * M_PI);
     if (normalizedFi > M_PI) normalizedFi -= 2.0 * M_PI;
     if (normalizedFi <= -M_PI) normalizedFi += 2.0 * M_PI;
-    ui->lineEdit_4->setText("Fi = " + QString::number(normalizedFi));
+    //ui->lineEdit_4->setText("Fi = " + QString::number(normalizedFi));
+
+    labelX->setText(QString("X: %1 mm").arg(robotX, 0, 'f', 0));
+    labelY->setText(QString("Y: %1 mm").arg(robotY, 0, 'f', 0));
+    labelFi->setText(QString("Fi: %1 rad").arg(normalizedFi, 0, 'f', 3));
 
     robot_X = robotX;
     robot_Y = robotY;
     robot_Fi = normalizedFi;
-    qDebug()<<"uhol robota: "<<robot_Fi;
+    //qDebug()<<"uhol robota: "<<robot_Fi;
 
 }
 #endif
@@ -366,7 +396,7 @@ int MainWindow::paintThisLidar(const LaserMeasurement &laserData)
 
 #ifndef DISABLE_OPENCV
 // --- ZOBRAZENIE KAMERY DO QLABEL ---
-int MainWindow::paintThisCamera(const cv::Mat &cameraData)
+/*int MainWindow::paintThisCamera(const cv::Mat &cameraData)
 {
     // 1. OCHRANA
     if (cameraData.empty() || cameraData.cols <= 0 || cameraData.rows <= 0) return 0;
@@ -551,6 +581,179 @@ int MainWindow::paintThisCamera(const cv::Mat &cameraData)
         else {
             // Ak je lopta ďalej ako 1m, len vypíšeme info, ale nezastavujeme
             // Robot pokračuje v navigácii (state ostáva MOVING alebo ROTATING)
+            qDebug() << "Vidim loptu, ale je este daleko (" << distanceMm << " mm). Pokracujem.";
+        }
+    }
+
+    return 0;
+}*/
+int MainWindow::paintThisCamera(const cv::Mat &cameraData)
+{
+    // 1. OCHRANA
+    if (cameraData.empty() || cameraData.cols <= 0 || cameraData.rows <= 0) return 0;
+
+    // 2. NORMALIZÁCIA OBRAZU
+    cv::Mat frameCopy;
+    if (cameraData.channels() == 4) cv::cvtColor(cameraData, frameCopy, cv::COLOR_BGRA2BGR);
+    else if (cameraData.channels() == 1) cv::cvtColor(cameraData, frameCopy, cv::COLOR_GRAY2BGR);
+    else cameraData.copyTo(frameCopy);
+
+    frameCopy.copyTo(frame[(actIndex+1)%3]);
+    actIndex = (actIndex+1)%3;
+
+    // 3. RESIZE
+    cv::resize(frameCopy, frameCopy, cv::Size(640, 360));
+
+    // 4. PRÍPRAVA NA KRESLENIE
+    cv::Mat rgbFrame;
+    cv::cvtColor(frameCopy, rgbFrame, cv::COLOR_BGR2RGB);
+
+    QImage qimg((uchar*)rgbFrame.data, rgbFrame.cols, rgbFrame.rows, rgbFrame.step, QImage::Format_RGB888);
+    QImage drawingImage = qimg.copy();
+    QPainter painter(&drawingImage);
+
+    // --- 5. DETEKCIA LOPTY ---
+    float ballRadius = 0;
+    cv::Point ballCenter;
+    bool ballFound = false;
+
+    // Detekujeme len ak sme ešte neodfotili
+    if (!photoTaken) {
+        ballFound = detectBall(frameCopy, ballRadius, ballCenter);
+    }
+
+    // Premenné na nájdenie najlepšieho bodu
+    double bestLidarDistance = -1.0;
+    double minDistanceFound = 100000.0;
+
+    // --- 6. FÚZIA LIDARU A KAMERY ---
+    double width_I = 640.0;
+    double height_I = 360.0;
+    double f = 934.962;
+    double Z = -210;
+    double Z_D = -145;
+    double Y_D = -115;
+    double f_new = f * (width_I / 960.0);
+
+    for (size_t var = 0; var < uhol_update.size(); var++) {
+        double dist = vzdialenost_update[var];
+        if(dist <= 0) continue;
+
+        double uhol_rad = uhol_update[var] * (M_PI/180.0);
+        double sinus = std::sin(uhol_rad);
+        double cosinus = std::cos(uhol_rad);
+
+        double X_obr = width_I / 2.0 - (f_new * (dist * sinus)) / (dist * cosinus + Z_D);
+        double Y_obr = height_I / 2.0 + (f_new * (-Z + Y_D)) / (dist * cosinus + Z_D);
+
+        if(X_obr >= 0 && X_obr < width_I && Y_obr >= 0 && Y_obr < height_I) {
+
+            // Základné vykreslenie bodu
+            int kanalAlfa = static_cast<int>((250.0 / dist) * 255);
+            if (kanalAlfa > 255) kanalAlfa = 255; if (kanalAlfa < 50) kanalAlfa = 50;
+
+            if (dist > 185 && dist <= 350) {
+                painter.setBrush(QColor(255, 0, 0, 255)); painter.setPen(Qt::NoPen);
+                painter.drawRect(QRectF(X_obr - 5, Y_obr - 5, 10, 10));
+            } else if (dist > 350) {
+                painter.setBrush(QColor(0, 0, 255, kanalAlfa)); painter.setPen(Qt::NoPen);
+                painter.drawEllipse(QPointF(X_obr, Y_obr), 3, 3);
+            } else {
+                painter.setBrush(QColor(0, 0, 0, 255)); painter.setPen(Qt::NoPen);
+                painter.drawEllipse(QPointF(X_obr, Y_obr), 3, 3);
+            }
+
+            // Hľadanie najbližšieho bodu k lopte
+            if (ballFound) {
+                if (std::abs(X_obr - ballCenter.x) < ballRadius) {
+                    painter.setBrush(Qt::green);
+                    painter.drawEllipse(QPointF(X_obr, Y_obr), 6, 6);
+
+                    if (dist < minDistanceFound) {
+                        minDistanceFound = dist;
+                        bestLidarDistance = dist;
+                    }
+                }
+            }
+        }
+    }
+    painter.end();
+
+    // 7. ZOBRAZENIE
+    if(cameraLabel) {
+        QPixmap pix = QPixmap::fromImage(drawingImage);
+        cameraLabel->setPixmap(pix.scaled(cameraLabel->size(), Qt::KeepAspectRatio, Qt::SmoothTransformation));
+    }
+
+    // 8. NAHRÁVANIE VIDEO
+    if (recording && videoWriterCamera.isOpened()) {
+        videoWriterCamera.write(frameCopy);
+    }
+
+    // 9. LOGIKA UKONČENIA
+    if (ballFound) {
+
+        qDebug() << "Lopta detegovaná. Radius:" << ballRadius;
+
+        double distanceMm = bestLidarDistance;
+        if (distanceMm <= 0) distanceMm = 9999.0;
+        if (distanceMm > 5000) distanceMm = 5000;
+
+        // Výpočet polohy lopty pre zobrazenie
+        double fovRad = 1.05;
+        double angleOffset = ((320.0 - ballCenter.x) / 320.0) * (fovRad / 2.0);
+        double ballGlobalAngle = robot_Fi + angleOffset;
+        if (ballGlobalAngle > M_PI) ballGlobalAngle -= 2.0 * M_PI;
+        if (ballGlobalAngle <= -M_PI) ballGlobalAngle += 2.0 * M_PI;
+        double ballX = robot_X - distanceMm * sin(ballGlobalAngle);
+        double ballY = robot_Y - distanceMm * cos(ballGlobalAngle);
+
+        if (lidarVis) {
+            lidarVis->setDetectedBall(true, (int)(ballX / 100.0), (int)(ballY / 100.0));
+        }
+
+        // ====================================================================
+        // >>> LOGIKA ZASTAVENIA A ONESKORENIA <<<
+        // ====================================================================
+        if (distanceMm > 10.0 && distanceMm < 1000.0)
+        {
+            qDebug() << "Lopta je blizko! Zastavujem, fotim a spustam casovac pre koniec.";
+
+            // 1. OKAMŽITE ZASTAVIŤ ROBOTA
+            state = IDLE; // Vypneme navigáciu
+            _robot.setSpeedVal(0, 0); // Zastavíme motory
+
+            // 2. OKAMŽITE ODFOTIŤ
+            QString saveDir = "C:/Users/petri/Downloads/kamera_kobuki/Fotka/";
+            QDir dir(saveDir); if (!dir.exists()) dir.mkpath(".");
+            QDateTime now = QDateTime::currentDateTime();
+            QString timestamp = now.toString("yyyy_MM_dd_hh_mm_ss");
+            QString finalPhotoPath = saveDir + "fotka_lopty_" + timestamp + ".jpg";
+
+            cv::imwrite(finalPhotoPath.toStdString(), frameCopy);
+
+            // 3. ZABRÁNIŤ OPAKOVANÉMU VSTUPU
+            // Nastavíme photoTaken na true, aby sa detectBall už nevolal
+            // a aby sme do tejto podmienky už nevstúpili znova.
+            photoTaken = true;
+
+            // 4. SPUSTIŤ ČASOVAČ NA 2 SEKUNDY (2000 ms)
+            // Použijeme lambdu funkciu, ktorá sa vykoná o 2 sekundy
+            QTimer::singleShot(2000, this, [this, distanceMm, ballX, ballY]() {
+
+                // Toto sa stane až po 2 sekundách:
+
+                // A) Zastavíme nahrávanie (až teraz, aby sme mali tie 2 sekundy "úspechu" na videu)
+                if (recording) stopRecording();
+
+                // B) Zobrazíme správu
+                QMessageBox::information(this, "Misia Úspešná",
+                                         "Lopta nájdená a dosiahnutá!\n"
+                                         "Vzdialenosť: " + QString::number((int)distanceMm) + " mm\n"
+                                                                                   "Súradnice: [" + QString::number((int)ballX) + ", " + QString::number((int)ballY) + "]");
+            });
+        }
+        else {
             qDebug() << "Vidim loptu, ale je este daleko (" << distanceMm << " mm). Pokracujem.";
         }
     }
@@ -1155,14 +1358,7 @@ void MainWindow::showCollisionError()
 
 void MainWindow::on_pushButton_10_clicked()
 {
-    // Prepnutie stavu
     isDarkMode = !isDarkMode;
-
-    // Zmena textu na tlacidle podla stavu
-    if(isDarkMode) ui->pushButton_10->setText("Light Mode");
-    else ui->pushButton_10->setText("Dark Mode");
-
-    // Aplikovanie stylu
     updateTheme();
 }
 
@@ -1171,7 +1367,6 @@ void MainWindow::updateTheme()
     QString style;
 
     if (isDarkMode) {
-        // --- DARK MODE ---
         style = R"(
             QMainWindow, QWidget {
                 background-color: #2b2b2b;
@@ -1209,8 +1404,8 @@ void MainWindow::updateTheme()
                 color: #ffffff;
             }
         )";
+        ui->pushButton_10->setIcon(QIcon(":/ikonky/9937122.png"));
     } else {
-        // --- LIGHT MODE ---
         style = R"(
             QMainWindow, QWidget {
                 background-color: #f0f0f0;
@@ -1248,22 +1443,18 @@ void MainWindow::updateTheme()
                 color: #000000;
             }
         )";
+        ui->pushButton_10->setIcon(QIcon(":/ikonky/1664849-200.png"));
     }
 
-    // Aplikujeme štýl na celé okno
     this->setStyleSheet(style);
 
-    // --- ŠPECIÁLNE VÝNIMKY ---
+    // --- VÝNIMKY ---
 
-    // Kamera musí ostať čierna, inak by biele pozadie rušilo obraz
     if(cameraLabel) {
         cameraLabel->setStyleSheet("background-color: black; color: white; border: 2px solid gray;");
     }
 
-    // Lidar visualizer má vlastné kreslenie (čierne pozadie v paintEvent),
-    // takže stylesheet ho neovplyvní negatívne, ale môžeme mu nastaviť border
     if(lidarVis) {
-        // Lidar si pozadie riesi sam, tu len resetneme dedicnost ak treba
         lidarVis->setStyleSheet("background-color: black;");
     }
 }
@@ -1285,6 +1476,7 @@ void MainWindow::startRecording()
 
     QString camFile = fullPath + "/kamera.avi";
     QString lidarFile = fullPath + "/lidar.avi";
+    QString statsFile = fullPath + "/info.avi";
 
     int fps_1 = 8;
     int fps_2 = 21;
@@ -1312,16 +1504,29 @@ void MainWindow::startRecording()
         videoWriterLidar.open(lidarFile.toStdString(), cv::VideoWriter::fourcc('M','J','P','G'), fps_2, lidarVideoSize, true);
     }
 
-    if (videoWriterCamera.isOpened() && videoWriterLidar.isOpened()) {
+    if(ui->widget_3) {
+        int w = ui->widget_3->width();
+        int h = ui->widget_3->height();
+
+        // Ochrana: Rozmery musia byť párne (pre kodek MJPG)
+        if (w % 2 != 0) w--;
+        if (h % 2 != 0) h--;
+
+        statsVideoSize = cv::Size(w, h);
+
+        // Otvoríme video
+        videoWriterStats.open(statsFile.toStdString(), cv::VideoWriter::fourcc('M','J','P','G'), fps_2, statsVideoSize, true);
+    }
+    
+    if (videoWriterCamera.isOpened() && videoWriterLidar.isOpened() && videoWriterStats.isOpened()) {
         recording = true;
-        //koniecMisie = false; // ak použivaš tuto premennu
         lidarRecordTimer->start(1000 / fps_2);
-        qDebug() << "Nahravanie spustene. Lidar rozmer:" << lidarVideoSize.width << "x" << lidarVideoSize.height;
+        qDebug() << "Nahravanie spustene (Kamera, Lidar, Info).";
     } else {
-        qDebug() << "CHYBA: Nepodarilo sa otvorit video subory!";
-        // Pre istotu skúsime zavrieť, ak sa jeden otvoril a druhý nie
+        qDebug() << "CHYBA: Nepodarilo sa otvorit vsetky videa!";
         if (videoWriterCamera.isOpened()) videoWriterCamera.release();
         if (videoWriterLidar.isOpened()) videoWriterLidar.release();
+        if (videoWriterStats.isOpened()) videoWriterStats.release();
     }
 }
 
@@ -1336,6 +1541,7 @@ void MainWindow::stopRecording()
 
     if (videoWriterCamera.isOpened()) videoWriterCamera.release();
     if (videoWriterLidar.isOpened()) videoWriterLidar.release();
+    if (videoWriterStats.isOpened()) videoWriterStats.release();
 
     qDebug() << "Nahravanie ukoncene. Koniec misie.";
 }
@@ -1479,4 +1685,33 @@ void MainWindow::on_pushButton_11_clicked()
     // Vytvoríme a zobrazíme dialóg
     ReplayDialog dlg(this);
     dlg.exec(); // Modálne okno - hlavné okno bude blokované kým sa replay nezavrie
+}
+
+void MainWindow::recordStatsFrame()
+{
+    // 1. Kontrola: nahrávame? existuje widget_3? je súbor otvorený?
+    if (!recording || !ui->widget_3 || !videoWriterStats.isOpened()) return;
+
+    // 2. Grabovanie (odfotenie) widgetu_3
+    QPixmap pix = ui->widget_3->grab();
+    if (pix.isNull() || pix.width() <= 0 || pix.height() <= 0) return;
+
+    QImage img = pix.toImage().convertToFormat(QImage::Format_RGB888);
+
+    // 3. Konverzia na OpenCV Mat
+    cv::Mat mat(img.height(), img.width(), CV_8UC3, (uchar*)img.bits(), img.bytesPerLine());
+    cv::Mat matBGR;
+    cv::cvtColor(mat, matBGR, cv::COLOR_RGB2BGR);
+
+    // 4. Resize (ak sa veľkosť okna zmenila)
+    if (matBGR.size() != statsVideoSize) {
+        try {
+            cv::resize(matBGR, matBGR, statsVideoSize);
+        } catch (...) {
+            return;
+        }
+    }
+
+    // 5. Zápis
+    videoWriterStats.write(matBGR);
 }

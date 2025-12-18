@@ -7,7 +7,7 @@
     <x>0</x>
     <y>0</y>
     <width>1000</width>
-    <height>807</height>
+    <height>820</height>
    </rect>
   </property>
   <property name="sizePolicy">
@@ -19,7 +19,7 @@
   <property name="minimumSize">
    <size>
     <width>1000</width>
-    <height>800</height>
+    <height>820</height>
    </size>
   </property>
   <property name="maximumSize">
@@ -148,8 +148,8 @@
     </item>
     <item row="2" column="0">
      <layout class="QGridLayout" name="gridLayout_2">
-      <item row="1" column="0">
-       <widget class="QPushButton" name="pushButton_10">
+      <item row="2" column="3">
+       <widget class="QPushButton" name="pushButton_7">
         <property name="minimumSize">
          <size>
           <width>48</width>
@@ -163,11 +163,36 @@
          </size>
         </property>
         <property name="text">
+         <string>HELP</string>
+        </property>
+       </widget>
+      </item>
+      <item row="1" column="6">
+       <widget class="QPushButton" name="pushButton_4">
+        <property name="sizePolicy">
+         <sizepolicy hsizetype="Expanding" vsizetype="Fixed">
+          <horstretch>0</horstretch>
+          <verstretch>0</verstretch>
+         </sizepolicy>
+        </property>
+        <property name="minimumSize">
+         <size>
+          <width>48</width>
+          <height>48</height>
+         </size>
+        </property>
+        <property name="maximumSize">
+         <size>
+          <width>48</width>
+          <height>48</height>
+         </size>
+        </property>
+        <property name="text">
          <string/>
         </property>
         <property name="icon">
-         <iconset>
-          <normaloff>:/tvary/automatika.png</normaloff>:/tvary/automatika.png</iconset>
+         <iconset resource="Ikonky.qrc">
+          <normaloff>:/ikonky/10181283.png</normaloff>:/ikonky/10181283.png</iconset>
         </property>
         <property name="iconSize">
          <size>
@@ -201,42 +226,14 @@
          <string/>
         </property>
         <property name="icon">
-         <iconset>
-          <normaloff>:/tvary/sipka dole.png</normaloff>:/tvary/sipka dole.png</iconset>
+         <iconset resource="Ikonky.qrc">
+          <normaloff>:/ikonky/sipka dole.png</normaloff>:/ikonky/sipka dole.png</iconset>
         </property>
         <property name="iconSize">
          <size>
           <width>48</width>
           <height>48</height>
          </size>
-        </property>
-       </widget>
-      </item>
-      <item row="0" column="3">
-       <widget class="QLineEdit" name="lineEdit">
-        <property name="sizePolicy">
-         <sizepolicy hsizetype="Fixed" vsizetype="Fixed">
-          <horstretch>0</horstretch>
-          <verstretch>0</verstretch>
-         </sizepolicy>
-        </property>
-        <property name="minimumSize">
-         <size>
-          <width>160</width>
-          <height>20</height>
-         </size>
-        </property>
-        <property name="maximumSize">
-         <size>
-          <width>200</width>
-          <height>20</height>
-         </size>
-        </property>
-        <property name="text">
-         <string/>
-        </property>
-        <property name="maxLength">
-         <number>20</number>
         </property>
        </widget>
       </item>
@@ -264,8 +261,8 @@
          <string/>
         </property>
         <property name="icon">
-         <iconset>
-          <normaloff>:/tvary/sipka vpravo.png</normaloff>:/tvary/sipka vpravo.png</iconset>
+         <iconset resource="Ikonky.qrc">
+          <normaloff>:/ikonky/sipka vpravo.png</normaloff>:/ikonky/sipka vpravo.png</iconset>
         </property>
         <property name="iconSize">
          <size>
@@ -275,10 +272,10 @@
         </property>
        </widget>
       </item>
-      <item row="0" column="0">
-       <widget class="QPushButton" name="pushButton">
+      <item row="1" column="5">
+       <widget class="QPushButton" name="pushButton_6">
         <property name="sizePolicy">
-         <sizepolicy hsizetype="Minimum" vsizetype="Fixed">
+         <sizepolicy hsizetype="Expanding" vsizetype="Fixed">
           <horstretch>0</horstretch>
           <verstretch>0</verstretch>
          </sizepolicy>
@@ -291,16 +288,16 @@
         </property>
         <property name="maximumSize">
          <size>
-          <width>72</width>
-          <height>72</height>
+          <width>48</width>
+          <height>48</height>
          </size>
         </property>
         <property name="text">
          <string/>
         </property>
         <property name="icon">
-         <iconset>
-          <normaloff>:/tvary/1664849-200.png</normaloff>:/tvary/1664849-200.png</iconset>
+         <iconset resource="Ikonky.qrc">
+          <normaloff>:/ikonky/sipka vlavo.png</normaloff>:/ikonky/sipka vlavo.png</iconset>
         </property>
         <property name="iconSize">
          <size>
@@ -339,16 +336,16 @@
         </property>
         <property name="iconSize">
          <size>
-          <width>48</width>
-          <height>48</height>
+          <width>40</width>
+          <height>40</height>
          </size>
         </property>
        </widget>
       </item>
-      <item row="1" column="5">
-       <widget class="QPushButton" name="pushButton_6">
+      <item row="0" column="0">
+       <widget class="QPushButton" name="pushButton">
         <property name="sizePolicy">
-         <sizepolicy hsizetype="Expanding" vsizetype="Fixed">
+         <sizepolicy hsizetype="Minimum" vsizetype="Fixed">
           <horstretch>0</horstretch>
           <verstretch>0</verstretch>
          </sizepolicy>
@@ -361,16 +358,16 @@
         </property>
         <property name="maximumSize">
          <size>
-          <width>48</width>
-          <height>48</height>
+          <width>72</width>
+          <height>72</height>
          </size>
         </property>
         <property name="text">
          <string/>
         </property>
         <property name="icon">
-         <iconset>
-          <normaloff>:/tvary/sipka vlavo.png</normaloff>:/tvary/sipka vlavo.png</iconset>
+         <iconset resource="Ikonky.qrc">
+          <normaloff>:/ikonky/laser.png</normaloff>:/ikonky/laser.png</iconset>
         </property>
         <property name="iconSize">
          <size>
@@ -404,8 +401,8 @@
          <string/>
         </property>
         <property name="icon">
-         <iconset>
-          <normaloff>:/tvary/sipka hore.png</normaloff>:/tvary/sipka hore.png</iconset>
+         <iconset resource="Ikonky.qrc">
+          <normaloff>:/ikonky/sipka hore.png</normaloff>:/ikonky/sipka hore.png</iconset>
         </property>
         <property name="iconSize">
          <size>
@@ -415,14 +412,8 @@
         </property>
        </widget>
       </item>
-      <item row="1" column="6">
-       <widget class="QPushButton" name="pushButton_4">
-        <property name="sizePolicy">
-         <sizepolicy hsizetype="Expanding" vsizetype="Fixed">
-          <horstretch>0</horstretch>
-          <verstretch>0</verstretch>
-         </sizepolicy>
-        </property>
+      <item row="1" column="0">
+       <widget class="QPushButton" name="pushButton_10">
         <property name="minimumSize">
          <size>
           <width>48</width>
@@ -431,16 +422,16 @@
         </property>
         <property name="maximumSize">
          <size>
-          <width>48</width>
-          <height>48</height>
+          <width>72</width>
+          <height>72</height>
          </size>
         </property>
         <property name="text">
          <string/>
         </property>
         <property name="icon">
-         <iconset>
-          <normaloff>:/tvary/10181283.png</normaloff>:/tvary/10181283.png</iconset>
+         <iconset resource="Ikonky.qrc">
+          <normaloff>:/ikonky/1664849-200.png</normaloff>:/ikonky/1664849-200.png</iconset>
         </property>
         <property name="iconSize">
          <size>
@@ -450,31 +441,74 @@
         </property>
        </widget>
       </item>
-      <item row="2" column="3">
-       <widget class="QPushButton" name="pushButton_7">
-        <property name="text">
-         <string>HELP</string>
-        </property>
-       </widget>
-      </item>
-      <item row="0" column="4">
-       <widget class="QLineEdit" name="lineEdit_2"/>
-      </item>
       <item row="1" column="4">
-       <widget class="QLineEdit" name="lineEdit_3"/>
+       <spacer name="horizontalSpacer">
+        <property name="orientation">
+         <enum>Qt::Orientation::Horizontal</enum>
+        </property>
+        <property name="sizeHint" stdset="0">
+         <size>
+          <width>40</width>
+          <height>20</height>
+         </size>
+        </property>
+       </spacer>
       </item>
       <item row="2" column="4">
-       <widget class="QLineEdit" name="lineEdit_4"/>
+       <spacer name="horizontalSpacer_3">
+        <property name="orientation">
+         <enum>Qt::Orientation::Horizontal</enum>
+        </property>
+        <property name="sizeHint" stdset="0">
+         <size>
+          <width>40</width>
+          <height>20</height>
+         </size>
+        </property>
+       </spacer>
       </item>
-      <item row="2" column="5">
-       <widget class="QPushButton" name="pushButton_11">
+      <item row="0" column="4">
+       <widget class="QLineEdit" name="lineEdit">
+        <property name="sizePolicy">
+         <sizepolicy hsizetype="Fixed" vsizetype="Fixed">
+          <horstretch>0</horstretch>
+          <verstretch>0</verstretch>
+         </sizepolicy>
+        </property>
+        <property name="minimumSize">
+         <size>
+          <width>160</width>
+          <height>20</height>
+         </size>
+        </property>
+        <property name="maximumSize">
+         <size>
+          <width>200</width>
+          <height>20</height>
+         </size>
+        </property>
         <property name="text">
-         <string>PushButton</string>
+         <string/>
+        </property>
+        <property name="maxLength">
+         <number>20</number>
         </property>
        </widget>
       </item>
-      <item row="0" column="7">
-       <widget class="QPushButton" name="pushButton_12">
+      <item row="0" column="3">
+       <widget class="QPushButton" name="pushButton_11">
+        <property name="minimumSize">
+         <size>
+          <width>48</width>
+          <height>48</height>
+         </size>
+        </property>
+        <property name="maximumSize">
+         <size>
+          <width>72</width>
+          <height>72</height>
+         </size>
+        </property>
         <property name="text">
          <string>PushButton</string>
         </property>
@@ -584,7 +618,7 @@
      <x>0</x>
      <y>0</y>
      <width>1000</width>
-     <height>25</height>
+     <height>21</height>
     </rect>
    </property>
   </widget>

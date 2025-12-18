@@ -26,12 +26,6 @@
    <string>Dialog</string>
   </property>
   <layout class="QGridLayout" name="gridLayout_2">
-   <item row="0" column="0">
-    <widget class="QStackedWidget" name="stackedWidget">
-     <widget class="QWidget" name="bigLidar"/>
-     <widget class="QWidget" name="bigCamera"/>
-    </widget>
-   </item>
    <item row="0" column="1">
     <layout class="QVBoxLayout" name="verticalLayout">
      <item>
@@ -39,19 +33,19 @@
        <property name="minimumSize">
         <size>
          <width>250</width>
-         <height>400</height>
+         <height>225</height>
         </size>
        </property>
        <property name="maximumSize">
         <size>
          <width>250</width>
-         <height>400</height>
+         <height>225</height>
         </size>
        </property>
        <widget class="QStackedWidget" name="stackedWidget_2">
         <property name="geometry">
          <rect>
-          <x>10</x>
+          <x>0</x>
           <y>10</y>
           <width>241</width>
           <height>181</height>
@@ -64,50 +58,75 @@
      </item>
      <item>
       <widget class="QLabel" name="label">
+       <property name="minimumSize">
+        <size>
+         <width>0</width>
+         <height>25</height>
+        </size>
+       </property>
+       <property name="maximumSize">
+        <size>
+         <width>16777215</width>
+         <height>25</height>
+        </size>
+       </property>
        <property name="text">
-        <string>TextLabel</string>
+        <string/>
+       </property>
+      </widget>
+     </item>
+     <item alignment="Qt::AlignmentFlag::AlignHCenter">
+      <widget class="QWidget" name="widget_2" native="true">
+       <property name="minimumSize">
+        <size>
+         <width>120</width>
+         <height>200</height>
+        </size>
+       </property>
+       <property name="maximumSize">
+        <size>
+         <width>120</width>
+         <height>200</height>
+        </size>
        </property>
       </widget>
      </item>
      <item>
-      <spacer name="verticalSpacer">
-       <property name="orientation">
-        <enum>Qt::Orientation::Vertical</enum>
-       </property>
-       <property name="sizeHint" stdset="0">
-        <size>
-         <width>20</width>
-         <height>40</height>
-        </size>
-       </property>
-      </spacer>
-     </item>
-     <item>
-      <layout class="QHBoxLayout" name="horizontalLayout">
+      <layout class="QHBoxLayout" name="horizontalLayout_4">
        <item>
-        <widget class="QPushButton" name="pushButton_2">
-         <property name="text">
-          <string>Play</string>
-         </property>
-        </widget>
-       </item>
-       <item>
-        <widget class="QPushButton" name="pushButton">
-         <property name="text">
-          <string>Select</string>
-         </property>
-        </widget>
-       </item>
-       <item>
-        <widget class="QPushButton" name="pushButton_3">
-         <property name="text">
-          <string>Swap</string>
-         </property>
-        </widget>
+        <layout class="QVBoxLayout" name="verticalLayout_3">
+         <item>
+          <widget class="QPushButton" name="pushButton">
+           <property name="text">
+            <string>Select</string>
+           </property>
+          </widget>
+         </item>
+         <item>
+          <widget class="QPushButton" name="pushButton_2">
+           <property name="text">
+            <string>Play</string>
+           </property>
+          </widget>
+         </item>
+         <item>
+          <widget class="QPushButton" name="pushButton_3">
+           <property name="text">
+            <string>Swap</string>
+           </property>
+          </widget>
+         </item>
+        </layout>
        </item>
       </layout>
      </item>
     </layout>
+   </item>
+   <item row="0" column="0">
+    <widget class="QStackedWidget" name="stackedWidget">
+     <widget class="QWidget" name="bigLidar"/>
+     <widget class="QWidget" name="bigCamera"/>
+    </widget>
    </item>
   </layout>
  </widget>

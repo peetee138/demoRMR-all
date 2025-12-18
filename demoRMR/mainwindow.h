@@ -72,7 +72,7 @@ private slots:
     void on_pushButton_9_clicked();
     void on_pushButton_10_clicked();
     void on_pushButton_11_clicked();
-    void on_pushButton_12_clicked();
+    //void on_pushButton_12_clicked();
     void on_pushButton_13_clicked();
 
     void on_pushButton_15_clicked();
@@ -87,6 +87,8 @@ private slots:
 
     void recordLidarFrame(); // Slot, ktorý sa bude volat 20x za sekundu
     //void closeEvent(QCloseEvent *event) override;
+
+    void recordStatsFrame();
 
     void navigationLoop(); // Slot, ktorý sa bude volať každých 50ms
 
@@ -108,6 +110,10 @@ protected:
 
 
 private:
+    QLabel *labelX;
+    QLabel *labelY;
+    QLabel *labelFi;
+
     double getDistanceToBall(double angleRad);
 
     std::vector<double> uhol_update;
@@ -116,6 +122,10 @@ private:
     // --- NAHRÁVANIE ---
     cv::VideoWriter videoWriterCamera; // Premenoval som pre prehľadnosť
     cv::VideoWriter videoWriterLidar;  // Nový writer pre lidar
+
+    cv::VideoWriter videoWriterStats;   // Premenované z Battery na Stats
+    cv::Size statsVideoSize;            // Rozmery
+
     QTimer *lidarRecordTimer;          // Časovač pre snímanie lidaru
     cv::Size lidarVideoSize;
 

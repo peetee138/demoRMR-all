@@ -31,6 +31,12 @@ private slots:
 private:
     Ui::ReplayDialog *ui;
 
+    QLabel *labelInfo;          // Label pre zobrazenie
+    cv::VideoCapture capInfo;   // Načítanie videa
+    long totalFramesInfo;       // Počet snímkov
+    long currentFrameInfo;      // Kde sa práve nachádzame
+    double speedRatioInfo;      // Pomer rýchlosti voči Mastru
+
     long currentFrameMaster;
     long currentFrameSlave;
 
