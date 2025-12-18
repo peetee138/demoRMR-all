@@ -72,7 +72,7 @@ private slots:
     void on_pushButton_9_clicked();
     void on_pushButton_10_clicked();
     void on_pushButton_11_clicked();
-    //void on_pushButton_12_clicked();
+    void on_pushButton_12_clicked();
     void on_pushButton_13_clicked();
 
     void on_pushButton_15_clicked();
@@ -94,6 +94,8 @@ private slots:
 
     int paintThisLidar(const LaserMeasurement &laserData);
 
+    void onRowHeaderClicked(int index);
+    void onCellClicked(int row, int column);
 #ifndef DISABLE_OPENCV
     int paintThisCamera(const cv::Mat &cameraData);
 #endif
@@ -110,6 +112,8 @@ protected:
 
 
 private:
+    bool prekazkaActive = false;
+
     QLabel *labelX;
     QLabel *labelY;
     QLabel *labelFi;

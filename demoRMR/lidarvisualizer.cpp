@@ -216,7 +216,7 @@ void LidarVisualizer::paintEvent(QPaintEvent *event)
     {
         const auto& p = points[i];
         if (static_cast<int>(i) < m_currentIndex) {
-            painter.setBrush(Qt::green);
+            painter.setBrush(Qt::gray);
         } else {
             painter.setBrush((p.type == POINT_BLUE) ? Qt::blue : Qt::magenta);
         }
@@ -231,8 +231,8 @@ void LidarVisualizer::paintEvent(QPaintEvent *event)
         pozorStena = false;
         m_firstCollisionIndex = -2;
 
-        QPen okPen(Qt::yellow);       okPen.setWidth(2);
-        QPen robotPenLine(Qt::green); robotPenLine.setWidth(2);
+        QPen okPen(Qt::gray);       okPen.setWidth(2);
+        QPen robotPenLine(Qt::blue); robotPenLine.setWidth(2);
         QPen badPen(Qt::red);         badPen.setWidth(2);
 
         // A) Čiara od ROBOTA k AKTUÁLNEMU bodu
@@ -438,4 +438,49 @@ void LidarVisualizer::setDetectedBall(bool detected, int gridX, int gridY)
     m_ballGridX = gridX;
     m_ballGridY = gridY;
     update();
+}
+
+void LidarVisualizer::removePointAtIndex(int index)
+{
+    // Ochrana indexu
+    if (index < 0 || index >= (int)points.size()) return;
+
+    // Zmazanie bodu
+    points.erase(points.begin() + index);
+
+    // --- BEZPEČNOSTNÉ RESETOVANIE ---
+    // Ak sme zmazali bod, musíme aktualizovať premennú pre kontrolu čiar
+    if (m_lastCheckedCount > (int)points.size()) {
+        m_lastCheckedCount = points.size();
+    }
+
+    // Reset kolízií (lebo geometria sa zmenila)
+    m_firstCollisionIndex = -2;
+    pozorStena = false;
+
+    // Aktualizácia GUI
+    emit pointsUpdated(points); // Toto povie MainWindow, aby prekreslil tabuľku
+    update(); // Toto prekreslí mapu
+}
+
+void LidarVisualizer::togglePointType(int index)
+{
+    // Ochrana rozsahu
+    if (index < 0 || index >= (int)points.size()) return;
+
+    // Prepnutie
+    if (points[index].type == POINT_BLUE) {
+        points[index].type = POINT_PURPLE; // Zmena na Task
+    } else {
+        points[index].type = POINT_BLUE;   // Zmena na Waypoint
+    }
+
+    // Aktualizácia
+    emit pointsUpdated(points); // Prekreslí tabuľku
+    update(); // Prekreslí mapu (zmení farbu štvorčeka)
+}
+
+bool LidarVisualizer::getWallHighlight()
+{
+    return m_highlightWalls;
 }

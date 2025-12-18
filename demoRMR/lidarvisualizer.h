@@ -46,7 +46,10 @@ public:
     bool pozorStena;
     // Funkcia na vycistenie vsetkych bodov
     void clearPoints() { points.clear(); update(); }
+    void removePointAtIndex(int index);
+    void togglePointType(int index);
 
+    bool getWallHighlight();
 signals:
     void pointsUpdated(const std::vector<MapPoint> &points);
     void collisionDetected();

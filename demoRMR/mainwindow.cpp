@@ -141,6 +141,12 @@ MainWindow::MainWindow(QWidget *parent) :
     ui->tableWidgetPoints->setHorizontalHeaderLabels(headers);
     ui->tableWidgetPoints->horizontalHeader()->setSectionResizeMode(QHeaderView::Stretch);
 
+    connect(ui->tableWidgetPoints, &QTableWidget::cellClicked,
+            this, &MainWindow::onCellClicked);
+
+    connect(ui->tableWidgetPoints->verticalHeader(), &QHeaderView::sectionClicked,
+            this, &MainWindow::onRowHeaderClicked);
+
     photoTaken = false;
     recording = false;
     QDateTime now = QDateTime::currentDateTime();
@@ -218,15 +224,25 @@ void MainWindow::on_pushButton_clicked()
 void MainWindow::updatePointsTable(const std::vector<MapPoint> &points)
 {
     ui->tableWidgetPoints->setRowCount(0);
-    for(const auto& p : points) {
+    for(int i = 0; i < (int)points.size(); ++i) {
+        const auto& p = points[i];
         int row = ui->tableWidgetPoints->rowCount();
         ui->tableWidgetPoints->insertRow(row);
         ui->tableWidgetPoints->setItem(row, 0, new QTableWidgetItem(QString::number(p.x)));
         ui->tableWidgetPoints->setItem(row, 1, new QTableWidgetItem(QString::number(p.y)));
         QString typeStr = (p.type == POINT_BLUE) ? "Waypoint" : "Task";
         QTableWidgetItem *itemType = new QTableWidgetItem(typeStr);
-        if(p.type == POINT_BLUE) itemType->setForeground(Qt::blue);
-        else itemType->setForeground(Qt::magenta);
+
+        if (state != IDLE && i < currentPointIndex) {
+            itemType->setForeground(Qt::gray); // Už sme tam boli -> Zelená
+            itemType->setFont(QFont("Arial", 9, QFont::Bold)); // Voliteľné: Tučné písmo
+        }
+        else {
+            // Ešte sme tam neboli -> Pôvodné farby
+            if(p.type == POINT_BLUE) itemType->setForeground(Qt::blue);
+            else itemType->setForeground(Qt::magenta);
+        }
+
         ui->tableWidgetPoints->setItem(row, 2, itemType);
     }
 }
@@ -279,6 +295,8 @@ void MainWindow::on_pushButton_13_clicked()
         lidarVis->setCurrentIndex(0);
     }
 
+    updatePointsTable(navigationPoints);
+
     state = MOVING;
 
     startRecording(); //nahravie spustene
@@ -308,7 +326,7 @@ void MainWindow::on_pushButton_8_clicked()
 void MainWindow::setUiValues(double robotX,double robotY,double robotFi) {}
 
 #ifndef DISABLE_AMCL
-void MainWindow::setUiAMCLValues(double robotX, double robotY, double robotFi)
+/*void MainWindow::setUiAMCLValues(double robotX, double robotY, double robotFi)
 {
     //ui->lineEdit_2->setText("X = " + QString::number(robotX/100));
     //ui->lineEdit_3->setText("Y = " + QString::number(robotY/100));
@@ -326,6 +344,78 @@ void MainWindow::setUiAMCLValues(double robotX, double robotY, double robotFi)
     robot_Fi = normalizedFi;
     //qDebug()<<"uhol robota: "<<robot_Fi;
 
+}*/
+void MainWindow::setUiAMCLValues(double robotX, double robotY, double robotFi)
+{
+    // --- 1. FILTRÁCIA ÚLETOV S OCHRANOU PROTI SPAMOVANIU ---
+    static std::vector<std::pair<double, double>> history;
+
+    // Premenné pre logiku filtra
+    static int badPointsCounter = 0;       // Koľko zlých bodov prišlo za sebou
+    static int stablePointsCounter = 0;    // Koľko dobrých bodov prišlo za sebou
+    static bool warningActive = false;     // Či sme už zobrazili varovanie a čakáme na ustálenie
+
+    const size_t HISTORY_SIZE = 4;
+    const double MAX_JUMP_MM = 500.0;
+    const int STABILITY_REQUIRED = 20;     // Musí prísť 20 dobrých bodov, aby sa resetovalo varovanie
+
+    if (!history.empty()) {
+        double sumX = 0, sumY = 0;
+        for (const auto& bod : history) { sumX += bod.first; sumY += bod.second; }
+        double avgX = sumX / history.size();
+        double avgY = sumY / history.size();
+
+        double dist = std::sqrt(std::pow(robotX - avgX, 2) + std::pow(robotY - avgY, 2));
+
+        if (dist > MAX_JUMP_MM) {
+            // --- DETEGOVANÁ CHYBA ---
+            badPointsCounter++;
+            stablePointsCounter = 0; // Prerušili sme sériu dobrých bodov
+
+            // Zobrazíme okno iba ak práve nie je "aktívne"
+            if (!warningActive) {
+                warningActive = true; // Zamkneme, aby nevyskakovalo ďalšie
+                QMessageBox::warning(this, "Pozor", "Strata polohy!");
+            }
+
+            // Ak je to krátkodobý úlet, ignorujeme ho
+            if (badPointsCounter < 5) {
+                return; // Ukončíme funkciu, neprekreslíme UI
+            }
+
+            // Ak úlet trvá dlho, resetujeme filter (robot sa asi naozaj premiestnil)
+            history.clear();
+            badPointsCounter = 0;
+            // Poznámka: warningActive necháme true, kým sa signál neustáli
+        }
+        else {
+            // --- BOD JE V PORIADKU ---
+            badPointsCounter = 0;
+            stablePointsCounter++;
+
+            // Varovanie odomkneme až vtedy, keď je signál dlhšie stabilný
+            if (stablePointsCounter > STABILITY_REQUIRED) {
+                warningActive = false;
+            }
+        }
+    }
+
+    history.push_back({robotX, robotY});
+    if (history.size() > HISTORY_SIZE) history.erase(history.begin());
+    // -------------------------------------------------------
+
+    // --- 2. PÔVODNÝ KÓD NA VYKRESLENIE ---
+    double normalizedFi = std::fmod(robotFi, 2.0 * M_PI);
+    if (normalizedFi > M_PI) normalizedFi -= 2.0 * M_PI;
+    if (normalizedFi <= -M_PI) normalizedFi += 2.0 * M_PI;
+
+    labelX->setText(QString("X: %1 mm").arg(robotX, 0, 'f', 0));
+    labelY->setText(QString("Y: %1 mm").arg(robotY, 0, 'f', 0));
+    labelFi->setText(QString("Fi: %1 rad").arg(normalizedFi, 0, 'f', 3));
+
+    robot_X = robotX;
+    robot_Y = robotY;
+    robot_Fi = normalizedFi;
 }
 #endif
 
@@ -608,6 +698,8 @@ int MainWindow::paintThisCamera(const cv::Mat &cameraData)
     cv::Mat rgbFrame;
     cv::cvtColor(frameCopy, rgbFrame, cv::COLOR_BGR2RGB);
 
+    bool vidimPrekazkuTeraz = false;
+
     QImage qimg((uchar*)rgbFrame.data, rgbFrame.cols, rgbFrame.rows, rgbFrame.step, QImage::Format_RGB888);
     QImage drawingImage = qimg.copy();
     QPainter painter(&drawingImage);
@@ -652,9 +744,12 @@ int MainWindow::paintThisCamera(const cv::Mat &cameraData)
             int kanalAlfa = static_cast<int>((250.0 / dist) * 255);
             if (kanalAlfa > 255) kanalAlfa = 255; if (kanalAlfa < 50) kanalAlfa = 50;
 
-            if (dist > 185 && dist <= 350) {
+            if (dist >= 270 && dist <= 350) {
                 painter.setBrush(QColor(255, 0, 0, 255)); painter.setPen(Qt::NoPen);
                 painter.drawRect(QRectF(X_obr - 5, Y_obr - 5, 10, 10));
+            }else if (dist < 270 && dist > 50){
+                    vidimPrekazkuTeraz = true;
+                    qDebug()<<"prekazka do paze "<< vidimPrekazkuTeraz;
             } else if (dist > 350) {
                 painter.setBrush(QColor(0, 0, 255, kanalAlfa)); painter.setPen(Qt::NoPen);
                 painter.drawEllipse(QPointF(X_obr, Y_obr), 3, 3);
@@ -757,7 +852,7 @@ int MainWindow::paintThisCamera(const cv::Mat &cameraData)
             qDebug() << "Vidim loptu, ale je este daleko (" << distanceMm << " mm). Pokracujem.";
         }
     }
-
+    prekazkaActive = vidimPrekazkuTeraz;
     return 0;
 }
 #endif
@@ -1159,6 +1254,14 @@ void MainWindow::navigationLoop()
         return;
     }
 
+    if (prekazkaActive == true) {
+        // Ak vidíme prekážku, okamžite stojíme
+        _robot.setSpeedVal(0, 0);
+        current_linear_speed = 0.0;
+        qDebug() << "Prekazka detegovana! Stojim.";
+        return; // Nepokračujeme v navigácii, kým prekážka nezmizne
+    }
+
     if(state == IDLE) {
         navTimer->stop();
         _robot.setSpeedVal(0, 0);
@@ -1230,6 +1333,7 @@ void MainWindow::navigationLoop()
             currentPointIndex++;
             if(lidarVis) lidarVis->setCurrentIndex(currentPointIndex);
 
+            updatePointsTable(navigationPoints);
             // Ak bol toto posledný bod (Waypoint), v ďalšom cykle to zachytí kontrola na začiatku
             if (currentPointIndex >= navigationPoints.size()) {
                 // Tu ešte nezastavujeme, necháme prebehnúť ďalší cyklus, ktorý to korektne ukončí
@@ -1285,6 +1389,8 @@ void MainWindow::navigationLoop()
             state = MOVING;
             currentPointIndex++;
             if(lidarVis) lidarVis->setCurrentIndex(currentPointIndex);
+
+            updatePointsTable(navigationPoints);
 
             _robot.setSpeedVal(0, 0);
             qDebug() << "Rotacia dokoncena.";
@@ -1714,4 +1820,47 @@ void MainWindow::recordStatsFrame()
 
     // 5. Zápis
     videoWriterStats.write(matBGR);
+}
+
+void MainWindow::onRowHeaderClicked(int index)
+{
+    // Index je číslo riadku (začína od 0)
+
+    // Voliteľné: Dialóg na potvrdenie (aby si to nezmazal omylom)
+    QMessageBox::StandardButton reply;
+    reply = QMessageBox::question(this, "Zmazať bod",
+                                  "Naozaj chcete zmazať bod č. " + QString::number(index + 1) + "?",
+                                  QMessageBox::Yes | QMessageBox::No);
+
+    if (reply == QMessageBox::Yes) {
+        // Zavoláme funkciu vo vizualizéri
+        if(lidarVis) {
+            lidarVis->removePointAtIndex(index);
+        }
+    }
+}
+
+void MainWindow::onCellClicked(int row, int column)
+{
+    // Stĺpec 0 je X, 1 je Y, 2 je Typ
+    // My chceme reagovať len na kliknutie do stĺpca "Typ" (index 2)
+    if (column == 2) {
+        if (lidarVis) {
+            lidarVis->togglePointType(row);
+        }
+    }
+}
+
+void MainWindow::on_pushButton_12_clicked()
+{
+    if(lidarVis) {
+        // 1. Zistíme aktuálny stav (či svieti alebo nie)
+        bool aktualnyStav = lidarVis->getWallHighlight();
+
+        // 2. Pošleme mu opačný stav (ak je true -> pošleme false, a naopak)
+        lidarVis->toggleWallHighlight(!aktualnyStav);
+
+        // Voliteľné: Výpis do konzoly pre kontrolu
+        // qDebug() << "Zvyraznenie stien prepnute na:" << !aktualnyStav;
+    }
 }
