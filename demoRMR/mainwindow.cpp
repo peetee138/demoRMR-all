@@ -50,76 +50,58 @@ MainWindow::MainWindow(QWidget *parent) :
         ui->widget_2->setLayout(layout);
     }
 
-    // 2. Vytvoríme indikátor
     batteryVis = new BatteryIndicator(this);
 
-    // 3. Pridáme ho do layoutu
     ui->widget_2->layout()->addWidget(batteryVis);
 
-    // 1. Skontrolujeme/vytvoríme layout pre widget_3
     if (ui->widget_3->layout() == nullptr) {
         QVBoxLayout *layout = new QVBoxLayout(ui->widget_3);
         ui->widget_3->setLayout(layout);
     }
 
-    // 2. Vytvoríme font (voliteľné, pre lepšiu čitateľnosť)
     QFont font("Arial", 10, QFont::Bold);
 
-    // 3. Inicializácia Labelov
     labelX = new QLabel("X: 0.00 m", this);
     labelY = new QLabel("Y: 0.00 m", this);
     labelFi = new QLabel("Fi: 0.00 rad", this);
 
-    // 4. Nastavenie vzhľadu
     labelX->setFont(font);
     labelY->setFont(font);
     labelFi->setFont(font);
 
-    // Zarovnanie (napr. na stred)
     labelX->setAlignment(Qt::AlignCenter);
     labelY->setAlignment(Qt::AlignCenter);
     labelFi->setAlignment(Qt::AlignCenter);
 
-    // 5. Pridanie do layoutu widgetu_3
     ui->widget_3->layout()->addWidget(labelX);
     ui->widget_3->layout()->addWidget(labelY);
     ui->widget_3->layout()->addWidget(labelFi);
 
-    // A) VELKY STACK (stackedWidget)
-    // Stranka "lidar"
     if(ui->lidar && !ui->lidar->layout()) {
         QVBoxLayout* l = new QVBoxLayout(ui->lidar);
         l->setContentsMargins(0,0,0,0);
     }
-    // Stranka "camera"
     if(ui->camera && !ui->camera->layout()) {
         QVBoxLayout* l = new QVBoxLayout(ui->camera);
         l->setContentsMargins(0,0,0,0);
     }
 
-    // B) MALY STACK (stackedWidget_2)
-    // Stranka "smallLidar" (pre maly lidar)
     if(ui->smallLidar && !ui->smallLidar->layout()) {
         QVBoxLayout* l = new QVBoxLayout(ui->smallLidar);
         l->setContentsMargins(0,0,0,0);
     }
-    // Stranka "smallCamera" (pre malu kameru)
     if(ui->smallCamera && !ui->smallCamera->layout()) {
         QVBoxLayout* l = new QVBoxLayout(ui->smallCamera);
         l->setContentsMargins(0,0,0,0);
     }
 
     // --- 3. Nastavenie pociatocneho stavu ---
-    // Chceme: Lidar velky, Kamera mala
     isLidarBig = true;
 
-    // Lidar -> Velky stack (stranka lidar)
     ui->lidar->layout()->addWidget(lidarVis);
 
-    // Kamera -> Maly stack (stranka smallCamera)
     ui->smallCamera->layout()->addWidget(cameraLabel);
 
-    // Nastavenie viditelnych stranok
     ui->stackedWidget->setCurrentWidget(ui->lidar);
     if(ui->stackedWidget_2) {
         ui->stackedWidget_2->setCurrentWidget(ui->smallCamera);
@@ -173,50 +155,34 @@ MainWindow::~MainWindow()
 // --- FUNKCIA NA PREPINANIE (SWAP) ---
 void MainWindow::on_pushButton_clicked()
 {
-    // Bezpecnostna kontrola - ci mame widgety
     if(!lidarVis || !cameraLabel) return;
 
-    // 1. "Odpojíme" widgety z ich aktualnych rodicov
     lidarVis->setParent(nullptr);
     cameraLabel->setParent(nullptr);
 
-    // 2. Prehodime stav
     isLidarBig = !isLidarBig;
 
     if(isLidarBig)
     {
-        // --- STAV A: Lidar Velky, Kamera Mala ---
 
-        // Lidar -> Velky stack (stranka lidar)
         ui->lidar->layout()->addWidget(lidarVis);
-
-        // Kamera -> Maly stack (stranka smallCamera)
         ui->smallCamera->layout()->addWidget(cameraLabel);
-
-        // Prepni StackedWidgety
         ui->stackedWidget->setCurrentWidget(ui->lidar);
         if(ui->stackedWidget_2) ui->stackedWidget_2->setCurrentWidget(ui->smallCamera);
-
+        
         ui->pushButton->setIcon(QIcon(":/ikonky/laser.png"));
     }
     else
     {
-        // --- STAV B: Kamera Velka, Lidar Maly ---
-
-        // Kamera -> Velky stack (stranka camera)
         ui->camera->layout()->addWidget(cameraLabel);
-
-        // Lidar -> Maly stack (stranka smallLidar)
         ui->smallLidar->layout()->addWidget(lidarVis);
-
-        // Prepni StackedWidgety
         ui->stackedWidget->setCurrentWidget(ui->camera);
         if(ui->stackedWidget_2) ui->stackedWidget_2->setCurrentWidget(ui->smallLidar);
 
         ui->pushButton->setIcon(QIcon(":/ikonky/camera.png"));
     }
 
-    // Prekreslenie pre istotu
+    // Prekreslenie
     lidarVis->show();
     cameraLabel->show();
 }
@@ -269,7 +235,6 @@ void MainWindow::updatePointsTable(const std::vector<MapPoint> &points)
 
 void MainWindow::on_pushButton_13_clicked()
 {
-    // 1. Zoberieme body, ktoré si naklikal
     navigationPoints = lidarVis->getPoints();
 
     if(navigationPoints.empty()) {
@@ -277,7 +242,7 @@ void MainWindow::on_pushButton_13_clicked()
         return;
     }
 
-    // --- NOVÁ KONTROLA: Sú body prepojené? ---
+    // --- KONTROLA: Sú body prepojené? ---
     if (!lidarVis->isPathDrawActive()) {
         QMessageBox::warning(this, "Pozor", "Trasa nie je skontrolovaná!\nStlačte najprv tlačidlo 'Kontrola'");
         return;
@@ -289,7 +254,6 @@ void MainWindow::on_pushButton_13_clicked()
     }
     // -----------------------------------------
 
-    // 2. Nastavíme počiatočný stav
     currentPointIndex = 0;
     if(lidarVis) {
         lidarVis->setCurrentIndex(0);
@@ -301,7 +265,6 @@ void MainWindow::on_pushButton_13_clicked()
 
     startRecording(); //nahravie spustene
 
-    // 3. Spustíme časovač (cyklus pobeží každých 50ms)
     if(!navTimer->isActive()) {
         navTimer->start(50);
     }
@@ -319,9 +282,6 @@ void MainWindow::on_pushButton_8_clicked()
     }
 }
 
-
-// paintEvent UZ NIE JE POTREBNY - VYMAZANY (alebo zakomentovany)
-// void MainWindow::paintEvent(QPaintEvent *event) { ... }
 
 void MainWindow::setUiValues(double robotX,double robotY,double robotFi) {}
 
@@ -347,10 +307,8 @@ void MainWindow::setUiValues(double robotX,double robotY,double robotFi) {}
 }*/
 void MainWindow::setUiAMCLValues(double robotX, double robotY, double robotFi)
 {
-    // --- 1. FILTRÁCIA ÚLETOV S OCHRANOU PROTI SPAMOVANIU ---
     static std::vector<std::pair<double, double>> history;
 
-    // Premenné pre logiku filtra
     static int badPointsCounter = 0;       // Koľko zlých bodov prišlo za sebou
     static int stablePointsCounter = 0;    // Koľko dobrých bodov prišlo za sebou
     static bool warningActive = false;     // Či sme už zobrazili varovanie a čakáme na ustálenie
@@ -372,7 +330,6 @@ void MainWindow::setUiAMCLValues(double robotX, double robotY, double robotFi)
             badPointsCounter++;
             stablePointsCounter = 0; // Prerušili sme sériu dobrých bodov
 
-            // Zobrazíme okno iba ak práve nie je "aktívne"
             if (!warningActive) {
                 warningActive = true; // Zamkneme, aby nevyskakovalo ďalšie
                 QMessageBox::warning(this, "Pozor", "Strata polohy!");
@@ -386,7 +343,6 @@ void MainWindow::setUiAMCLValues(double robotX, double robotY, double robotFi)
             // Ak úlet trvá dlho, resetujeme filter (robot sa asi naozaj premiestnil)
             history.clear();
             badPointsCounter = 0;
-            // Poznámka: warningActive necháme true, kým sa signál neustáli
         }
         else {
             // --- BOD JE V PORIADKU ---
@@ -827,21 +783,11 @@ int MainWindow::paintThisCamera(const cv::Mat &cameraData)
 
             cv::imwrite(finalPhotoPath.toStdString(), frameCopy);
 
-            // 3. ZABRÁNIŤ OPAKOVANÉMU VSTUPU
-            // Nastavíme photoTaken na true, aby sa detectBall už nevolal
-            // a aby sme do tejto podmienky už nevstúpili znova.
             photoTaken = true;
 
-            // 4. SPUSTIŤ ČASOVAČ NA 2 SEKUNDY (2000 ms)
-            // Použijeme lambdu funkciu, ktorá sa vykoná o 2 sekundy
             QTimer::singleShot(2000, this, [this, distanceMm, ballX, ballY]() {
-
-                // Toto sa stane až po 2 sekundách:
-
-                // A) Zastavíme nahrávanie (až teraz, aby sme mali tie 2 sekundy "úspechu" na videu)
                 if (recording) stopRecording();
-
-                // B) Zobrazíme správu
+                
                 QMessageBox::information(this, "Misia Úspešná",
                                          "Lopta nájdená a dosiahnutá!\n"
                                          "Vzdialenosť: " + QString::number((int)distanceMm) + " mm\n"
@@ -1188,8 +1134,6 @@ bool MainWindow::detectBall(const cv::Mat &frame, float &outRadius, cv::Point &o
         // Ignorujeme malé šumy
         if (rawArea < 500) continue;
 
-        // --- KĽÚČOVÁ ČASŤ: CONVEX HULL (Obalová krivka) ---
-        // Obalíme kontúru "gumičkou", čím ignorujeme preliačiny a fľaky
         std::vector<cv::Point> hull;
         cv::convexHull(contours[i], hull);
 
@@ -1198,7 +1142,7 @@ bool MainWindow::detectBall(const cv::Mat &frame, float &outRadius, cv::Point &o
 
         if (hullPerimeter == 0) continue;
 
-        // Výpočet kruhovitosti na základe OBALU, nie deravej kontúry
+        // Výpočet kruhovitosti na základe OBALU 
         // Perfektný kruh = 1.0
         double hullCircularity = (4 * M_PI * hullArea) / (hullPerimeter * hullPerimeter);
 
@@ -1385,7 +1329,6 @@ void MainWindow::navigationLoop()
 
         if (totalRotatedAngle >= 2 * M_PI - 0.2) {
 
-            // Rotácia hotová
             state = MOVING;
             currentPointIndex++;
             if(lidarVis) lidarVis->setCurrentIndex(currentPointIndex);
@@ -1395,8 +1338,6 @@ void MainWindow::navigationLoop()
             _robot.setSpeedVal(0, 0);
             qDebug() << "Rotacia dokoncena.";
 
-            // --- !!! TOTO JE OPRAVA PRE POSLEDNÝ TASK BOD !!! ---
-            // Skontrolujeme, či sme po rotácii už na konci zoznamu
             if (currentPointIndex >= navigationPoints.size() || currentPointIndex >= allowedPoints) {
                 qDebug() << "Koniec trasy (Task).";
                 state = IDLE;
@@ -1448,7 +1389,7 @@ void MainWindow::on_pushButton_15_clicked(){
             "text-align: center;"
             );
 
-        // 3. VYTVORENIE VLASTNÉHO OKNA (Namiesto QMessageBox)
+        // 3. VYTVORENIE VLASTNÉHO OKNA
         // Toto zaručí, že text bude presne v strede
         QDialog dialog(this);
         dialog.setWindowTitle("EMERGENCY STOP");
@@ -1483,13 +1424,8 @@ void MainWindow::on_pushButton_15_clicked(){
         dialog.exec();
 
     } else {
-        // 5. Vypnutie NOTAUSu
         notaus = false;
-
-        // Vyčistíme "červený" štýl z tlačidla
         ui->pushButton_15->setStyleSheet("");
-
-        // Obnovíme pôvodnú tému
         updateTheme();
     }
 }
@@ -1497,12 +1433,8 @@ void MainWindow::on_pushButton_15_clicked(){
 void MainWindow::showForbiddenError()
 {
     errorDialog dlg(this);
-
-    // Prepojíme signál z Dialogu (tlačidlo Pomocka) priamo na slot Visualizera (toggleWallHighlight)
-    // Použijeme lambdu alebo priame prepojenie, ak je visualizer dostupný
     connect(&dlg, &errorDialog::requestZoneHighlight, lidarVis, &LidarVisualizer::toggleWallHighlight);
-
-    dlg.exec(); // Zobrazí sa modálne (čaká)
+    dlg.exec();
 }
 /*void MainWindow::showCollisionError()
 {
@@ -1513,12 +1445,9 @@ void MainWindow::showForbiddenError()
 }*/
 void MainWindow::showCollisionError()
 {
-    // Použijeme správny dialog pre stenu
     wallErrorDialog dlg(this);
     dlg.setModal(true);
 
-    // PREPOJENIE:
-    // Keď v dialogu klikneš DELETE -> zavolá sa vo Visualizeri funkcia na mazanie
     connect(&dlg, &wallErrorDialog::deleteRequested, lidarVis, &LidarVisualizer::removeInvalidPoints);
 
     dlg.exec();
@@ -1617,11 +1546,9 @@ void MainWindow::updateTheme()
     this->setStyleSheet(style);
 
     // --- VÝNIMKY ---
-
     if(cameraLabel) {
         cameraLabel->setStyleSheet("background-color: black; color: white; border: 2px solid gray;");
     }
-
     if(lidarVis) {
         lidarVis->setStyleSheet("background-color: black;");
     }
@@ -1652,7 +1579,7 @@ void MainWindow::startRecording()
     // --- OTVORENIE KAMERY ---
     videoWriterCamera.open(camFile.toStdString(), cv::VideoWriter::fourcc('M','J','P','G'), fps_1, cv::Size(640, 360), true);
 
-    // --- OTVORENIE LIDARU (OPRAVENÉ) ---
+    // --- OTVORENIE LIDARU  ---
     if(lidarVis) {
         // Zistíme aktuálnu veľkosť widgetu
         int w = lidarVis->width();
@@ -1736,8 +1663,7 @@ void MainWindow::recordLidarFrame()
     cv::cvtColor(mat, matBGR, cv::COLOR_RGB2BGR);
 
     // 4. !!! KRITICKÁ ČASŤ !!!
-    // Musíme zmeniť veľkosť obrázka presne na to, s čím sme otvorili VideoWriter.
-    // Aj keď sa veľkosť líši len o 1 pixel, musíme spraviť resize.
+    // Musíme zmeniť veľkosť obrázka..
 
     if (matBGR.size() != lidarVideoSize) {
         try {
@@ -1750,10 +1676,6 @@ void MainWindow::recordLidarFrame()
 
     // 5. Zápis
     videoWriterLidar.write(matBGR);
-
-    // Debug výpis (môžeš po čase vymazať, ak to bude fungovať)
-    // static int frameCounter = 0;
-    // if (frameCounter++ % 20 == 0) qDebug() << "Zapisujem Lidar frame...";
 }
 
 void MainWindow::receiveFrontLidarPoints(const std::vector<double> &uhol, const std::vector<double> &vzdialenost)
@@ -1929,44 +1851,38 @@ void MainWindow::on_pushButton_12_clicked()
 
 void MainWindow::on_pushButton_14_clicked()
 {
-    // 1. OKAMŽITÉ ZASTAVENIE
+    // 1. OKAMZITE ZASTAVENIE
     _robot.setSpeedVal(0, 0);
-    navTimer->stop();         // Zastaví navigáciu
+    navTimer->stop();    
 
-    // 2. UKONČENIE NAHRÁVANIA (ak beží)
-    // Týmto sa uzavrú súbory a uloží sa video z predchádzajúcej misie
+    // 2. UKONCENIE nahravania 
     if (recording) {
         stopRecording();
     }
-    // Zastavíme aj časovač nahrávania pre istotu
     if (lidarRecordTimer->isActive()) {
         lidarRecordTimer->stop();
     }
 
-    // 3. RESET PREMENNÝCH STAVU
+    // 3. RESET premennych
     state = IDLE;
     currentPointIndex = 0;
 
     koniecMisie = false;
-    notaus = false;         // Vypneme notaus ak bol zapnutý
+    notaus = false;   
 
-    // DÔLEŽITÉ PRE LOPTU A PREKÁŽKY:
-    photoTaken = false;     // Dovolí znova detegovať a fotiť loptu
-    prekazkaActive = false; // Zruší blokovanie, ak tam bola prekážka
+    photoTaken = false;     
+    prekazkaActive = false; 
 
-    // 4. VYMAZANIE DÁT
-    navigationPoints.clear(); // Vymaže lokálnu kópiu trasy
+    // 4. Vymazanie dat
+    navigationPoints.clear();
 
-    // 5. RESET VIZUALIZÉRA (Body, Čiary, Lopta na mape)
+    // 5. RESET mapy
     if (lidarVis) {
         lidarVis->reset();
     }
 
-    // 6. VYČISTENIE TABUĽKY (pre istotu, aj keď signal z Vis to spraví tiež)
+    // 6. Vycistenie tabulky
     ui->tableWidgetPoints->setRowCount(0);
-
-    // 7. Reset kamery na text "Čakám..." (voliteľné)
-    // if(cameraLabel) cameraLabel->setText("Pripravený na novú misiu");
 
     qDebug() << "--- SYSTEM KOMPLETNE RESETOVANY ---";
     QMessageBox::information(this, "Reset", "Misia bola resetovaná.\nMôžete zadať nové body a začať odznova.");
