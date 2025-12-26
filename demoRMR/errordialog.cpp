@@ -15,14 +15,11 @@ errorDialog::~errorDialog()
 
 void errorDialog::on_pushButton_Accept_clicked()
 {
-    // Len zavrie okno
     this->close();
 }
 
 void errorDialog::on_pushButton_Pomocka_clicked()
 {
-    // Vyšle signál do MainWindow (ktorý to pošle do Visualizera)
     emit requestZoneHighlight(true);
-    // A zavrie okno
     this->close();
 }
