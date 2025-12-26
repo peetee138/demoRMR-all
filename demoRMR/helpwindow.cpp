@@ -6,6 +6,8 @@ HelpWindow::HelpWindow(QWidget *parent)
     , ui(new Ui::HelpWindow)
 {
     ui->setupUi(this);
+
+    this->setStyleSheet("border-image: url(:/ikonky/Help.png) 0 0 0 0 stretch stretch;");
 }
 
 HelpWindow::~HelpWindow()

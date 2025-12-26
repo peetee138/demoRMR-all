@@ -484,3 +484,23 @@ bool LidarVisualizer::getWallHighlight()
 {
     return m_highlightWalls;
 }
+
+void LidarVisualizer::reset()
+{
+    // 1. Zmažeme všetky body
+    points.clear();
+
+    // 2. Resetujeme všetky pomocné premenné
+    m_lastCheckedCount = 0;
+    m_currentIndex = 0;
+    m_firstCollisionIndex = -2;
+    pozorStena = false;
+    drawPath = false;      // Vypneme kreslenie čiar
+
+    // 3. Zmažeme loptu z mapy
+    m_ballDetected = false;
+
+    // 4. Aktualizujeme GUI
+    emit pointsUpdated(points); // Povie MainWindow, aby zmazal tabuľku
+    update(); // Prekreslí čiernu mapu bez bodov
+}

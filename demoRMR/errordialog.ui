@@ -7,7 +7,7 @@
     <x>0</x>
     <y>0</y>
     <width>400</width>
-    <height>150</height>
+    <height>175</height>
    </rect>
   </property>
   <property name="windowTitle">
@@ -18,12 +18,12 @@
     <rect>
      <x>10</x>
      <y>10</y>
-     <width>381</width>
-     <height>71</height>
+     <width>371</width>
+     <height>91</height>
     </rect>
    </property>
    <property name="plainText">
-    <string>Nastalo kliknutie do zakazanej zony
+    <string>Nastalo kliknutie do zakazanej zony. Ak potrebuješ pomôcť klikni na HELP. Vykreslí sa zóna kde nemôžeš umiestniť body.
 </string>
    </property>
   </widget>
@@ -31,7 +31,7 @@
    <property name="geometry">
     <rect>
      <x>290</x>
-     <y>90</y>
+     <y>110</y>
      <width>100</width>
      <height>50</height>
     </rect>
@@ -44,7 +44,7 @@
    <property name="geometry">
     <rect>
      <x>180</x>
-     <y>90</y>
+     <y>110</y>
      <width>100</width>
      <height>50</height>
     </rect>

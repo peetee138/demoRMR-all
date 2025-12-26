@@ -50,6 +50,8 @@ public:
     void togglePointType(int index);
 
     bool getWallHighlight();
+
+    void reset();
 signals:
     void pointsUpdated(const std::vector<MapPoint> &points);
     void collisionDetected();

@@ -423,7 +423,7 @@ void MainWindow::on_pushButton_9_clicked() // START
 {
     QString zadany_text = ui->lineEdit->text();
     if (zadany_text.isEmpty()){
-        this->ipaddress = "192.168.1.14";
+        this->ipaddress = "127.0.0.1";
     } else {
         this->ipaddress = zadany_text.toStdString();
     }
@@ -1423,13 +1423,75 @@ void MainWindow::on_pushButton_7_clicked()
     helpWind.exec();
 }
 
-void MainWindow::on_pushButton_15_clicked(){
+/*void MainWindow::on_pushButton_15_clicked(){
     notaus = !notaus;
 
     if(notaus){
         _robot.setSpeedVal(0,0);
     }else
         notaus = false;
+}*/
+
+void MainWindow::on_pushButton_15_clicked(){
+    notaus = !notaus;
+
+    if(notaus){
+        // 1. Zastaviť robota
+        _robot.setSpeedVal(0,0);
+
+        // 2. Zmeniť farbu hlavného tlačidla
+        ui->pushButton_15->setStyleSheet(
+            "background-color: red; "
+            "color: white; "
+            "font-weight: bold; "
+            "border: 3px solid darkred; "
+            "text-align: center;"
+            );
+
+        // 3. VYTVORENIE VLASTNÉHO OKNA (Namiesto QMessageBox)
+        // Toto zaručí, že text bude presne v strede
+        QDialog dialog(this);
+        dialog.setWindowTitle("EMERGENCY STOP");
+        dialog.setWindowFlags(Qt::Dialog | Qt::WindowTitleHint | Qt::CustomizeWindowHint); // Odstráni ? tlačidlo
+        dialog.setStyleSheet("background-color: #ffcccc;"); // Pozadie okna
+
+        // Layout (rozloženie prvkov pod seba)
+        QVBoxLayout *layout = new QVBoxLayout(&dialog);
+        layout->setSpacing(20); // Medzera medzi textom a tlačidlom
+        layout->setContentsMargins(20, 20, 20, 20); // Okraje okna
+
+        // A) TEXT
+        QLabel *label = new QLabel("⚠️ EMERGENCY STOP STLAČENÝ! ⚠️\n\nRobot bol okamžite zastavený.", &dialog);
+        label->setAlignment(Qt::AlignCenter); // Zarovnanie na stred
+        label->setStyleSheet("color: darkred; font-weight: bold; font-size: 14px; background: transparent;");
+        layout->addWidget(label);
+
+        // B) TLAČIDLO OK
+        QPushButton *okButton = new QPushButton("OK", &dialog);
+        okButton->setFixedWidth(100); // Pevná šírka tlačidla
+        okButton->setStyleSheet(
+            "QPushButton { background-color: red; color: white; border: 1px solid darkred; padding: 6px; font-weight: bold; border-radius: 4px; }"
+            "QPushButton:hover { background-color: darkred; }"
+            );
+        // Prepojíme tlačidlo so zatvorením okna
+        connect(okButton, &QPushButton::clicked, &dialog, &QDialog::accept);
+
+        // Pridáme tlačidlo do layoutu a zarovnáme ho na stred (alebo Qt::AlignRight ak chceš vpravo)
+        layout->addWidget(okButton, 0, Qt::AlignCenter);
+
+        // 4. Zobraziť okno
+        dialog.exec();
+
+    } else {
+        // 5. Vypnutie NOTAUSu
+        notaus = false;
+
+        // Vyčistíme "červený" štýl z tlačidla
+        ui->pushButton_15->setStyleSheet("");
+
+        // Obnovíme pôvodnú tému
+        updateTheme();
+    }
 }
 
 void MainWindow::showForbiddenError()
@@ -1863,4 +1925,49 @@ void MainWindow::on_pushButton_12_clicked()
         // Voliteľné: Výpis do konzoly pre kontrolu
         // qDebug() << "Zvyraznenie stien prepnute na:" << !aktualnyStav;
     }
+}
+
+void MainWindow::on_pushButton_14_clicked()
+{
+    // 1. OKAMŽITÉ ZASTAVENIE
+    _robot.setSpeedVal(0, 0);
+    navTimer->stop();         // Zastaví navigáciu
+
+    // 2. UKONČENIE NAHRÁVANIA (ak beží)
+    // Týmto sa uzavrú súbory a uloží sa video z predchádzajúcej misie
+    if (recording) {
+        stopRecording();
+    }
+    // Zastavíme aj časovač nahrávania pre istotu
+    if (lidarRecordTimer->isActive()) {
+        lidarRecordTimer->stop();
+    }
+
+    // 3. RESET PREMENNÝCH STAVU
+    state = IDLE;
+    currentPointIndex = 0;
+
+    koniecMisie = false;
+    notaus = false;         // Vypneme notaus ak bol zapnutý
+
+    // DÔLEŽITÉ PRE LOPTU A PREKÁŽKY:
+    photoTaken = false;     // Dovolí znova detegovať a fotiť loptu
+    prekazkaActive = false; // Zruší blokovanie, ak tam bola prekážka
+
+    // 4. VYMAZANIE DÁT
+    navigationPoints.clear(); // Vymaže lokálnu kópiu trasy
+
+    // 5. RESET VIZUALIZÉRA (Body, Čiary, Lopta na mape)
+    if (lidarVis) {
+        lidarVis->reset();
+    }
+
+    // 6. VYČISTENIE TABUĽKY (pre istotu, aj keď signal z Vis to spraví tiež)
+    ui->tableWidgetPoints->setRowCount(0);
+
+    // 7. Reset kamery na text "Čakám..." (voliteľné)
+    // if(cameraLabel) cameraLabel->setText("Pripravený na novú misiu");
+
+    qDebug() << "--- SYSTEM KOMPLETNE RESETOVANY ---";
+    QMessageBox::information(this, "Reset", "Misia bola resetovaná.\nMôžete zadať nové body a začať odznova.");
 }

@@ -161,3 +161,8 @@ message(DEFINES in demoRMR: $$DEFINES)  # Debugging message
 
 RESOURCES += \
     Ikonky.qrc
+
+DISTFILES += \
+    ../tvary/black-question-mark-icon-clip-art-10.png \
+    ../tvary/replay.png \
+    ../tvary/stena.png

@@ -163,7 +163,17 @@
          </size>
         </property>
         <property name="text">
-         <string>HELP</string>
+         <string/>
+        </property>
+        <property name="icon">
+         <iconset resource="Ikonky.qrc">
+          <normaloff>:/ikonky/otaznik.png</normaloff>:/ikonky/otaznik.png</iconset>
+        </property>
+        <property name="iconSize">
+         <size>
+          <width>40</width>
+          <height>40</height>
+         </size>
         </property>
        </widget>
       </item>
@@ -495,25 +505,6 @@
         </property>
        </widget>
       </item>
-      <item row="0" column="3" alignment="Qt::AlignmentFlag::AlignHCenter">
-       <widget class="QPushButton" name="pushButton_11">
-        <property name="minimumSize">
-         <size>
-          <width>48</width>
-          <height>48</height>
-         </size>
-        </property>
-        <property name="maximumSize">
-         <size>
-          <width>72</width>
-          <height>72</height>
-         </size>
-        </property>
-        <property name="text">
-         <string>Replay</string>
-        </property>
-       </widget>
-      </item>
       <item row="1" column="3" alignment="Qt::AlignmentFlag::AlignHCenter">
        <widget class="QPushButton" name="pushButton_12">
         <property name="minimumSize">
@@ -535,7 +526,46 @@
          </size>
         </property>
         <property name="text">
-         <string>Steny</string>
+         <string/>
+        </property>
+        <property name="icon">
+         <iconset resource="Ikonky.qrc">
+          <normaloff>:/ikonky/free-wall-icon-1074-thumb.png</normaloff>:/ikonky/free-wall-icon-1074-thumb.png</iconset>
+        </property>
+        <property name="iconSize">
+         <size>
+          <width>40</width>
+          <height>40</height>
+         </size>
+        </property>
+       </widget>
+      </item>
+      <item row="0" column="3">
+       <widget class="QPushButton" name="pushButton_11">
+        <property name="minimumSize">
+         <size>
+          <width>48</width>
+          <height>48</height>
+         </size>
+        </property>
+        <property name="maximumSize">
+         <size>
+          <width>72</width>
+          <height>72</height>
+         </size>
+        </property>
+        <property name="text">
+         <string/>
+        </property>
+        <property name="icon">
+         <iconset resource="Ikonky.qrc">
+          <normaloff>:/ikonky/4029028.png</normaloff>:/ikonky/4029028.png</iconset>
+        </property>
+        <property name="iconSize">
+         <size>
+          <width>40</width>
+          <height>40</height>
+         </size>
         </property>
        </widget>
       </item>
@@ -643,7 +673,7 @@
      <x>0</x>
      <y>0</y>
      <width>1000</width>
-     <height>21</height>
+     <height>25</height>
     </rect>
    </property>
   </widget>
